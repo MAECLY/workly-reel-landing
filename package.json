@@ -1,0 +1,43 @@
+{
+  "name": "workly-reel-landing",
+  "private": true,
+  "version": "0.1.0",
+  "description": "WorklyReel by MAECLY Phase 0 landing page.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "content:check": "tsx scripts/check-content.ts",
+    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run content:check && pnpm run test && pnpm run build"
+  },
+  "dependencies": {
+    "@maecly/workly-reel-ui": "git+ssh://git@github.com/MAECLY/workly-reel-ui.git#837a08bdb4c1a84f4002cd3f38a9e28069965ab2",
+    "next": "^16.3.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.0",
+    "eslint": "^10.9.1",
+    "eslint-config-next": "^16.3.2",
+    "jsdom": "^30.0.1",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.12",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

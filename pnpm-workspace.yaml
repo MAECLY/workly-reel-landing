@@ -1,0 +1,11 @@
+# The landing page resolves the design system from a pinned MAECLY commit, the
+# same commit the desktop app pins, so both consume one source of truth.
+packages: []
+allowBuilds:
+  esbuild: set this to true or false
+  unrs-resolver: set this to true or false
+minimumReleaseAgeExclude:
+  - eslint@10.9.1
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
