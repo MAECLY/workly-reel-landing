@@ -1,0 +1,77 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Landing page
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The design system is a private repository resolved over SSH. Without a
+      # key nothing can install, so the job says which command to run locally
+      # rather than reporting a pass that skipped every gate.
+      - name: Check for design-system access
+        id: access
+        env:
+          DEPLOY_KEY: ${{ secrets.WORKLY_REEL_UI_DEPLOY_KEY }}
+        run: |
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No WORKLY_REEL_UI_DEPLOY_KEY configured, so the design system cannot be resolved and every gate is skipped. Run locally with: pnpm install && pnpm verify"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure SSH
+        if: steps.access.outputs.available == 'true'
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.WORKLY_REEL_UI_DEPLOY_KEY }}
+
+      - name: Install
+        if: steps.access.outputs.available == 'true'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Types
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run typecheck
+
+      - name: Lint
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run lint
+
+      - name: Formatting
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run format:check
+
+      # Every claim on the page has to be checkable against what the desktop
+      # application actually ships.
+      - name: Content rules
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run content:check
+
+      - name: Tests
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run test
+
+      - name: Production build
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run build
