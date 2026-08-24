@@ -1,0 +1,54 @@
+{
+  "$comment": "Every asset on this page is real. A screenshot is the running application; an export is the output of the shipped compositor. Nothing here is a mock-up, and nothing here contains real private data.",
+  "generatedFrom": {
+    "desktopCommit": "7008c56a45e3a8a750ae508e5fe6d250ebaa17dd",
+    "designSystemCommit": "837a08bdb4c1a84f4002cd3f38a9e28069965ab2"
+  },
+  "assets": [
+    {
+      "file": "/assets/screenshot-evidence-review.png",
+      "kind": "screenshot",
+      "caption": "Evidence Review in the running desktop application. A source that could not be read reports its activity as unknown rather than as zero.",
+      "alt": "The Evidence Review screen of WorklyReel. A warning states that the picture of the window may be incomplete. GitHub is listed as unavailable with activity unknown, and Local Git is listed as having run cleanly with six items. Below, six commits from the fictional Harbour Ledger project are listed with their authority, naming policy, and timestamps.",
+      "width": 1280,
+      "height": 860,
+      "bytes": 141744,
+      "sha256": "fbc06e8cb21e7247cf046efa71a1049002d80be7f961741a24a641b16cd380ef",
+      "capturedFrom": "WorklyReel 0.1.0 on macOS",
+      "dataPolicy": "synthetic",
+      "fictionalProject": "Harbour Ledger",
+      "fictionalAuthor": "A. Rivera",
+      "approved": true
+    },
+    {
+      "file": "/assets/screenshot-activity-window.png",
+      "kind": "screenshot",
+      "caption": "Choosing an activity window. Week covers seven consecutive dates, weekends count, and future dates are disabled.",
+      "alt": "The Home screen of WorklyReel. A calendar for August 2026 shows the eighteenth to the twenty-fourth selected, including the Saturday and Sunday. A summary reads seven days in America slash Bogota. Dates after the twenty-fourth are dimmed.",
+      "width": 1280,
+      "height": 860,
+      "bytes": 125967,
+      "sha256": "3e31d0f4993876355bb18639428e736a02217de3ba5058e6b1bc88c8c2431363",
+      "capturedFrom": "WorklyReel 0.1.0 on macOS",
+      "dataPolicy": "synthetic",
+      "fictionalProject": "Harbour Ledger",
+      "fictionalAuthor": "A. Rivera",
+      "approved": true
+    },
+    {
+      "file": "/assets/export-signal-portrait.png",
+      "kind": "export",
+      "caption": "A real 1080 by 1350 export produced by the deterministic compositor from synthetic Git evidence.",
+      "alt": "A dark portrait card. The eyebrow reads Weekly Arc, 2026-08-18 to 2026-08-24. The heading reads Fixes in Harbour Ledger. Below it, a sentence stating six changes landed on six of seven days, and a breakdown of three fixes, one refactor, one documentation change and one test change. Three proof points are labelled Covered, Fixed and Documented. The WorklyReel by MAECLY wordmark sits in the lower left.",
+      "width": 1080,
+      "height": 1350,
+      "bytes": 89651,
+      "sha256": "2674a85aabfe90b7021428c9229becadaebb55f69a6f1b8057f5c98debb7ee7a",
+      "capturedFrom": "WorklyReel 0.1.0 on macOS",
+      "dataPolicy": "synthetic",
+      "fictionalProject": "Harbour Ledger",
+      "fictionalAuthor": "A. Rivera",
+      "approved": true
+    }
+  ]
+}

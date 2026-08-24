@@ -1,0 +1,7 @@
+Fixes in Harbour Ledger
+
+Six changes landed on six of seven days, in Harbour Ledger.
+
+That work breaks down as three fixes, one refactor, one documentation change, and one test change.
+
+Also in the window: Cover the drain path; Correct the backoff ceiling.
