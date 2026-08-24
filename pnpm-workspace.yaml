@@ -2,8 +2,11 @@
 # same commit the desktop app pins, so both consume one source of truth.
 packages: []
 allowBuilds:
-  esbuild: set this to true or false
-  unrs-resolver: set this to true or false
+  # Both place a prebuilt native binary that the test runner and the linter
+  # need in order to start at all. Allowed explicitly rather than left as a
+  # prompt, so `pnpm install` succeeds on a clean checkout without a question.
+  esbuild: true
+  unrs-resolver: true
 minimumReleaseAgeExclude:
   - eslint@10.9.1
 onlyBuiltDependencies:

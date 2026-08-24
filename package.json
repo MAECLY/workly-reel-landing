@@ -2,6 +2,7 @@
   "name": "workly-reel-landing",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "description": "WorklyReel by MAECLY Phase 0 landing page.",
   "scripts": {
     "dev": "next dev",
