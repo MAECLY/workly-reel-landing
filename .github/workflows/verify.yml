@@ -25,19 +25,31 @@ jobs:
         with:
           node-version: 22
 
-      # The design system is a private repository resolved over SSH. Without a
-      # key nothing can install, so the job says which command to run locally
-      # rather than reporting a pass that skipped every gate.
+      # The design system is a private repository resolved over SSH, so without a
+      # key nothing installs and every gate below is skipped.
+      #
+      # This step used to emit a `::warning::` and carry on, which meant the job
+      # reported success having run nothing at all: 14 of 14 real steps skipped,
+      # a green tick over zero work. That is the exact failure this repository's
+      # test suite exists to prevent, so it now fails instead.
+      #
+      # The one place a missing key is legitimate is a pull request from a fork,
+      # where GitHub withholds secrets by design and the contributor could not
+      # supply one. That case still skips, and says so.
       - name: Check for design-system access
         id: access
         env:
           DEPLOY_KEY: ${{ secrets.WORKLY_REEL_UI_DEPLOY_KEY }}
+          FROM_FORK: ${{ github.event.pull_request.head.repo.fork }}
         run: |
-          if [ -z "$DEPLOY_KEY" ]; then
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No WORKLY_REEL_UI_DEPLOY_KEY configured, so the design system cannot be resolved and every gate is skipped. Run locally with: pnpm install && pnpm verify"
-          else
+          if [ -n "$DEPLOY_KEY" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
+          elif [ "$FROM_FORK" = "true" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::A fork cannot be given the design-system key, so the gates below did not run. A maintainer must run them before merging."
+          else
+            echo "::error::No WORKLY_REEL_UI_DEPLOY_KEY is configured, so every gate below would be skipped and this job would report a pass having verified nothing. Add the private half of a read-only deploy key for MAECLY/workly-reel-ui as a repository secret."
+            exit 1
           fi
 
       - name: Configure SSH
@@ -106,19 +118,48 @@ jobs:
         if: steps.access.outputs.available == 'true' && steps.browser.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
-      # One class this gate does not catch, named so a green run is not read as
-      # covering it: a section heading demoted from h2 to h4 where the heading
+      # Two classes this gate does not catch, named so a green run is not read
+      # as covering them.
+      #
+      # The first is a section heading demoted from h2 to h4 where the heading
       # immediately before it in document order is an h3. The heading check in
       # tests/e2e/a11y.e2e.ts compares each heading against its predecessor, so
       # that descent is legal to it, and axe reaches the same verdict at
       # moderate impact, below the serious threshold this gate blocks on. A
       # demotion that follows the h1 directly is caught.
       #
+      # The second is axe on any page but the landing one. tests/e2e/pages.ts
+      # now walks app/ and feeds every discovered page to the theme sweep and to
+      # the reduced-motion sweep, which is what closed the animation hole below
+      # — but a11y.e2e.ts still opens `/` and only `/`, so the not-found page is
+      # never analysed. It is the one place a page inventory exists and is not
+      # used, which makes it the easiest thing here to assume is covered.
+      # tests/e2e/not-found.e2e.ts holds that page's markup, its metadata, its
+      # theme, its way out and its three keyboard stops, but it runs no axe.
+      #
       # An animation declared outside the `prefers-reduced-motion:
-      # no-preference` block used to be a second entry here, because
-      # tests/e2e/motion.e2e.ts sampled `.lp-rise` and `.lp-reveal` and nothing
-      # else. It now sweeps every element and both of its generated boxes, and
-      # the `.lp-status` animation that once passed is caught.
+      # no-preference` block used to be an entry here twice over, and neither
+      # version passes now. tests/e2e/motion.e2e.ts once sampled `.lp-rise` and
+      # `.lp-reveal` and nothing else, so the `.lp-status` animation slipped
+      # past; it now sweeps every element and both of its generated boxes. It
+      # then opened `/` and nothing else, so an animation on a class only the
+      # 404 uses slipped past instead; it now runs once per page discovered by
+      # tests/e2e/pages.ts, as tests/e2e/theme.e2e.ts and
+      # tests/e2e/headers.e2e.ts also do.
+      #
+      # Three specs added since this comment was written run under the same
+      # command and need no step of their own. tests/e2e/not-found.e2e.ts holds
+      # the route that answers when something is wrong — a real 404 status
+      # rather than an apology served as a page, arriving already in its theme,
+      # a file the site does not have refused rather than served as HTML, and a
+      # fragment naming nothing leaving a working page behind.
+      # tests/e2e/headers.e2e.ts is described below. tests/e2e/overflow.e2e.ts
+      # tries to scroll every region that clips content wider than itself at a
+      # phone width, which is the question `overflow-x: hidden` silently answers
+      # "no" to: the usual reply to an unwanted scrollbar cut a hundred pixels
+      # off the specification table at 390 while keyboard.e2e.ts and
+      # responsive.e2e.ts both stayed green, because they asked which regions
+      # *declare* that they scroll.
       #
       # This step also owns the one set of claims that are not about rendering
       # at all. tests/e2e/contracts.e2e.ts holds the documents this page
@@ -133,11 +174,15 @@ jobs:
       #
       # The limit that gate carries, named for the same reason as the heading
       # one above: the header check reads its expectation from next.config.ts,
-      # so deleting a promise there deletes the expectation with it. Two things
+      # so deleting a promise there deletes the expectation with it. Deleting
+      # `frame-ancestors 'none'` used to pass for exactly that reason, with the
+      # page embeddable in any third-party iframe afterwards. Three things now
       # hold it from the other side: tests/e2e/metadata.e2e.ts pins
-      # `noindex, nofollow` literally, and the policy check beside it in
-      # contracts.e2e.ts refuses any source that is not 'self', 'none',
-      # 'unsafe-inline' or data: however the config comes to be written.
+      # `noindex, nofollow` literally, tests/e2e/headers.e2e.ts writes every
+      # directive of the policy out and asks the browser to try framing the
+      # page, and the policy check in contracts.e2e.ts refuses any source that
+      # is not 'self', 'none', 'unsafe-inline' or data: however the config
+      # comes to be written.
       - name: End to end
         if: steps.access.outputs.available == 'true'
         run: pnpm run test:e2e

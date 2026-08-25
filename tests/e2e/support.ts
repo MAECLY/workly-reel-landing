@@ -40,6 +40,31 @@ export const withMotion = async (page: Page): Promise<void> => {
 };
 
 /**
+ * Let whatever the last change started finish moving.
+ *
+ * The design system transitions colour on its controls, so a value read in the
+ * same task as the change that caused it is a value part of the way there: the
+ * primary action reported three different greys on three consecutive reads
+ * after a token was overridden under it. Under `reduce` the package collapses
+ * every duration to a hundredth of a millisecond rather than removing the
+ * transition, so a frame is all this has to wait for and the timeout is only
+ * slack for a loaded machine.
+ */
+export const settle = async (page: Page): Promise<void> => {
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 3; frame += 1) {
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(null));
+      });
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 120);
+    });
+  });
+};
+
+/**
  * Bring every lazily loaded figure into the document.
  *
  * Only the hero image is eager. The rest carry `loading="lazy"`, so their

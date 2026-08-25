@@ -1,0 +1,85 @@
+name: Pages
+
+# Publishes the exported site to GitHub Pages at workly-reel.maecly.com.
+#
+# Only from `main`, and only after Verify has agreed with it. A deploy is the
+# one action here that a reader can see, so it does not run on a pull request
+# and it does not run on a branch.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The token is scoped to what a deploy needs and nothing else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one that is already publishing: a
+# half-written site is worse than an old one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # The design system is a private repository consumed as a pinned git
+      # dependency, so the build cannot resolve it without a key. Unlike the
+      # Verify workflow, this job has no useful degraded mode: a site built
+      # without the design system would publish unstyled. So it fails loudly.
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.WORKLY_REEL_UI_DEPLOY_KEY }}
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm build` runs `next build` and then hoists the security policy to
+      # the front of every exported document. Publishing the output of a bare
+      # `next build` would publish a policy that governs nothing.
+      - name: Export
+        run: pnpm build
+
+      # The published bytes are the tested bytes: this is the same check the
+      # verify chain runs, against the same `out/`.
+      - name: Smoke
+        run: pnpm smoke
+
+      # A missing CNAME silently drops the custom domain and the site reappears
+      # at the maecly.github.io address, which is not where anything points.
+      - name: Confirm the custom domain survived the export
+        run: |
+          test -f out/CNAME || { echo "::error::out/CNAME is missing; the custom domain would be dropped."; exit 1; }
+          echo "Publishing to $(cat out/CNAME)"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

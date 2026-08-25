@@ -6,8 +6,8 @@
   "description": "WorklyReel by MAECLY Phase 0 landing page.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "build": "next build && tsx scripts/harden-export.ts",
+    "start": "tsx scripts/serve-export.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format:check": "prettier --check .",

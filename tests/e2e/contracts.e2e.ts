@@ -13,8 +13,8 @@ import {
   realAsset,
   site,
 } from '../../content';
-import nextConfig from '../../next.config';
 import { loadEveryImage, showTheme, withoutMotion } from './support';
+import { renderedPages } from './pages';
 
 /**
  * The contracts this page publishes, checked against what it serves.
@@ -46,40 +46,7 @@ const UNPUBLISHED = '/phase-one';
  */
 const POST_COPY_FILE = realAsset(SIGNAL_EXPORT).file.replace(/\.png$/, '-post.txt');
 
-/**
- * The response headers the site promises, read from the config that declares
- * them rather than copied into this file.
- *
- * Only the rules that apply to every path are taken. Those are the ones every
- * surface below is supposed to keep; a narrower rule added later belongs to
- * the route it names, and this file would have to learn about it rather than
- * silently demand it everywhere.
- */
-const promisedHeaders = async (): Promise<readonly { key: string; value: string }[]> => {
-  const rules = (await nextConfig.headers?.()) ?? [];
-
-  return rules
-    .filter((rule) => rule.source.endsWith(':path*'))
-    .flatMap((rule) => rule.headers.map((header) => ({ key: header.key, value: header.value })));
-};
-
 const POLICY = 'content-security-policy';
-
-/**
- * One address this site answers, and whether the framework answers it under a
- * policy of its own.
- *
- * Next replaces the configured `Content-Security-Policy` on `/_next/image`
- * with `script-src 'none'; frame-src 'none'; sandbox;`, so an optimised image
- * cannot execute anything even if a crafted file reaches the route. That is
- * stricter than what this site declares rather than a hole in it, so the one
- * surface it applies to is marked here and its policy is held to being the
- * sandbox instead of being held to the promise.
- */
-interface Surface {
-  readonly path: string;
-  readonly sandboxed?: boolean;
-}
 
 /** Every `<loc>` a sitemap advertises, in the order it advertises them. */
 const advertisedAddresses = (xml: string): readonly string[] =>
@@ -102,67 +69,54 @@ const directive = (robots: string, name: string): string | undefined =>
 const ALLOWED_SOURCES = new Set(["'self'", "'none'", "'unsafe-inline'", 'data:']);
 
 test.describe('the contracts the page publishes', () => {
-  test('sends the headers it promises on every surface it serves', async ({ page, request }) => {
-    const promised = await promisedHeaders();
-    expect(promised.length, 'the config promises no headers at all').toBeGreaterThan(0);
-
-    await page.goto('/');
-    // The optimiser is a surface too, and it is the one nobody thinks of: the
-    // page asks for `/_next/image`, not for the file in `public/`, so a header
-    // rule that stopped covering it would leave the bytes a reader actually
-    // receives outside the policy. Taken from the page rather than composed
-    // here, because only the browser knows which variant it asked for.
-    const optimised = await page
-      .locator('img')
-      .first()
-      .evaluate((node) => {
-        const asked = new URL((node as HTMLImageElement).currentSrc);
-        return `${asked.pathname}${asked.search}`;
-      });
-
-    expect(optimised, 'the hero image is not being served through the optimiser').toContain(
-      '/_next/image',
-    );
-
-    const surfaces: readonly Surface[] = [
-      { path: '/' },
-      { path: '/sitemap.xml' },
-      { path: '/robots.txt' },
-      { path: realAsset(SIGNAL_EXPORT).file },
-      { path: POST_COPY_FILE },
-      { path: optimised, sandboxed: true },
-      { path: UNPUBLISHED },
+  /**
+   * Where the policy reaches, now that it is markup rather than a header.
+   *
+   * A header covered everything the origin served: the document, the sitemap,
+   * the robots file, every asset. A meta tag covers the document it is written
+   * in and nothing else, so this test asserts both halves of that honestly -
+   * the rendered pages carry the policy, and every other surface carries none.
+   *
+   * The second half is not a pass being manufactured out of a loss. It is the
+   * record of which bytes are now served with no policy attached, so that the
+   * day someone puts Cloudflare in front of the origin, this is the list of
+   * surfaces that gets its protection back.
+   */
+  test('delivers its policy in every document, and cannot attach it to anything else', async ({
+    request,
+  }) => {
+    const documents = renderedPages.map((page) => page.path);
+    const others = [
+      '/sitemap.xml',
+      '/robots.txt',
+      realAsset(SIGNAL_EXPORT).file,
+      POST_COPY_FILE,
+      UNPUBLISHED,
     ];
 
     const broken: string[] = [];
 
-    for (const surface of surfaces) {
-      const served = (await request.get(surface.path)).headers();
+    for (const path of documents) {
+      const response = await request.get(path);
+      const html = await response.text();
 
-      for (const header of promised) {
-        const answered = served[header.key.toLowerCase()] ?? 'nothing';
-
-        if (surface.sandboxed === true && header.key.toLowerCase() === POLICY) {
-          if (!answered.includes('sandbox')) {
-            broken.push(`${surface.path} serves an image without sandboxing it: ${answered}`);
-          }
-          continue;
-        }
-
-        if (answered !== header.value) {
-          broken.push(`${surface.path} answers ${header.key}: ${answered}`);
-        }
+      if (!html.includes('http-equiv="Content-Security-Policy"')) {
+        broken.push(`${path} is a document that carries no policy`);
       }
-
-      // `poweredByHeader: false` is a promise as much as the list above is,
-      // and it is the one that is kept by omission, so nothing else can check
-      // it by comparing values.
-      if ('x-powered-by' in served) {
-        broken.push(`${surface.path} still names the framework it was built with`);
+      // Kept by omission, and a static host sends none of its own either.
+      if ('x-powered-by' in response.headers()) {
+        broken.push(`${path} still names the framework it was built with`);
       }
     }
 
-    expect(broken, 'a surface this site publishes is outside the headers it promises').toEqual([]);
+    for (const path of others) {
+      const served = (await request.get(path)).headers();
+      if (POLICY in served) {
+        broken.push(`${path} answers a policy header this host cannot send`);
+      }
+    }
+
+    expect(broken, 'a surface this site publishes is not as this file records it').toEqual([]);
   });
 
   test('advertises in its sitemap only addresses that answer, and agree', async ({
@@ -250,7 +204,13 @@ test.describe('the contracts the page publishes', () => {
   });
 
   test('names no origin but its own in the policy it publishes', async ({ request }) => {
-    const policy = (await request.get('/')).headers()[POLICY] ?? '';
+    // Read from the markup, because that is where the policy now lives. A
+    // static host attaches no header for it to be read from.
+    const html = await (await request.get('/')).text();
+    const policy =
+      /<meta http-equiv="Content-Security-Policy" content="([^"]*)"/
+        .exec(html)?.[1]
+        ?.replaceAll('&#x27;', "'") ?? '';
 
     // Every source in every directive, which is everything after the directive
     // name. A policy is a promise about where bytes may come from, and this is
