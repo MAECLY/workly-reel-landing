@@ -46,6 +46,8 @@ built the package.
 | `pnpm typecheck`                    | `tsc --noEmit`                                             |
 | `pnpm content:check`                | The content linter. See below                              |
 | `pnpm test`                         | Vitest, including the linter's own regression suite        |
+| `pnpm test:e2e`                     | Playwright, Chromium at a desktop and a phone width        |
+| `pnpm smoke`                        | Four questions of the production build. See below          |
 | `pnpm format` / `pnpm format:check` | Prettier                                                   |
 | `pnpm lint`                         | ESLint. **Partial.** See the note under Tests              |
 | `pnpm verify`                       | Everything above, in the order CI runs it                  |
@@ -213,6 +215,49 @@ records the reason in a comment. The TypeScript surface is covered by
 `pnpm typecheck` under `strict`, `noUncheckedIndexedAccess`,
 `exactOptionalPropertyTypes`, `noUnusedLocals`, and `noUnusedParameters`, and by
 the suites above.
+
+### End to end
+
+```bash
+pnpm test:e2e
+```
+
+Playwright drives the real production server. `playwright.config.ts` runs
+`pnpm build && pnpm start -p 3210` and reuses an already running one outside CI.
+Two projects, both Chromium: one at 1280 by 900 and one at a 390 by 844 phone
+viewport. WebKit is not installed and is not used. The specs live in
+`tests/e2e/` behind a `.e2e.ts` suffix, so neither runner can pick up the
+other's files.
+
+| Spec                          | Covers                                                                                                                                                                                                                                                                |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/e2e/page.e2e.ts`       | 200 from `next start`, the five sections and the run block by their real ids, every workflow stage anchored, the primary action scrolling the run instructions into view and moving focus with it, and every manifest image decoding at the size the manifest records |
+| `tests/e2e/metadata.e2e.ts`   | The canonical with its trailing slash, `noindex, nofollow` in the meta tag and in the `X-Robots-Tag` header, the Open Graph image resolving to the real export byte for byte, and `/sitemap.xml` and `/robots.txt` rooted at the agreed origin                        |
+| `tests/e2e/responsive.e2e.ts` | At 390, 768, 1280, and 1680: no horizontal scroll, no element past the viewport, the headline in four lines or fewer, and every interactive target at least 24 by 24                                                                                                  |
+| `tests/e2e/a11y.e2e.ts`       | axe-core reporting nothing serious or critical in either theme, one `h1`, no skipped heading level, a skip link that moves the tab sequence into `<main>`, and a non-empty `alt` on every image                                                                       |
+
+Every expectation is read from `content/` and `public/assets/manifest.json`, so
+renaming a section or replacing an asset fails the suite rather than leaving it
+asserting a string nobody updated.
+
+The specs ask for `prefers-reduced-motion: reduce` before measuring anything.
+The page reveals its sections on a timer and on a scroll timeline, and a colour
+sampled halfway through that fade is one no reader ever sees; axe reported a
+different contrast ratio on every run until this was settled.
+
+### Smoke
+
+```bash
+pnpm build
+pnpm smoke
+```
+
+Four questions about the artefact rather than about the source: a production
+build exists, the server it produces answers 200 with the honest status label in
+the body, the manifest and its three approved files are present and still the
+bytes and SHA-256 the manifest records, and the content linter passes against
+the rendered HTML. It starts its own `next start` on port 4310, so it can never
+report on a server someone else left running.
 
 ## Production build
 
