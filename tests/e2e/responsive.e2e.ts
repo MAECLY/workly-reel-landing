@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 import { hero } from '../../content';
-import { loadEveryImage, withoutMotion } from './support';
+import { VIEWPORT_WIDTHS, loadEveryImage, withoutMotion } from './support';
 
 /**
  * Geometry at the four widths the layout is written for.
@@ -13,7 +13,14 @@ import { loadEveryImage, withoutMotion } from './support';
  * one wide desktop where the shell stops growing and the gutters take over.
  */
 
-const WIDTHS = [390, 768, 1280, 1680] as const;
+/*
+  Shared with `contracts.e2e.ts`, which reads every breakpoint out of the
+  shipped stylesheets and refuses one that no width here straddles. Keeping the
+  list in `support.ts` is what makes that check possible: a breakpoint added to
+  the CSS with nothing measured on either side of it now fails a test rather
+  than going unnoticed.
+*/
+const WIDTHS = VIEWPORT_WIDTHS;
 const VIEWPORT_HEIGHT = 900;
 
 /** WCAG 2.2 target size, minimum. Anything smaller is hard to hit accurately. */

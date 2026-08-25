@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 import { skipLink } from '../../content';
+import { renderedPages } from './pages';
 import { loadEveryImage, settle, showTheme, withoutMotion } from './support';
 
 /**
@@ -34,20 +35,54 @@ const blockingViolations = async (page: Page): Promise<readonly string[]> => {
     );
 };
 
+/**
+ * Axe, over every page the router renders rather than over the landing page.
+ *
+ * This was the last sweep in the suite with a page inventory beside it and a
+ * hardcoded `/` inside it. One stylesheet paints both routes and the not-found
+ * page has surfaces the landing page does not - a status code in monospace, a
+ * different lead paragraph - so a contrast failure there was a contrast failure
+ * nothing in this repository could see. `tests/e2e/not-found.e2e.ts` holds that
+ * page's markup, metadata, theme and keyboard stops, and ran no axe at all.
+ */
+for (const target of renderedPages) {
+  test.describe(`the accessibility of ${target.name}`, () => {
+    test.beforeEach(async ({ page }) => {
+      await withoutMotion(page);
+      const response = await page.goto(target.path);
+
+      expect(response?.status(), `${target.path} did not answer as it is meant to`).toBe(
+        target.status,
+      );
+      await loadEveryImage(page);
+    });
+
+    for (const theme of THEMES) {
+      test(`reports nothing serious or critical under the ${theme} theme`, async ({ page }) => {
+        await showTheme(page, theme);
+
+        // The package transitions colour on the toggle rather than swapping it,
+        // and under `reduce` it collapses the duration to a hundredth of a
+        // millisecond instead of removing the transition. Axe reads the colour
+        // it finds, so a run that lands inside that frame measures a colour no
+        // reader ever sees: measured here, three runs in six on the not-found
+        // page reported the footer pins at a contrast of 2.06, painted
+        // #b4b1ae, while the settled colour is #56524e at better than 6:1.
+        // Waiting measures the page rather than the frame; it relaxes nothing.
+        await settle(page);
+
+        expect(await blockingViolations(page)).toEqual([]);
+      });
+    }
+  });
+}
+
 test.describe('the accessibility of the page', () => {
   test.beforeEach(async ({ page }) => {
     await withoutMotion(page);
     await page.goto('/');
     await loadEveryImage(page);
   });
-
-  for (const theme of THEMES) {
-    test(`reports nothing serious or critical under the ${theme} theme`, async ({ page }) => {
-      await showTheme(page, theme);
-
-      expect(await blockingViolations(page)).toEqual([]);
-    });
-  }
 
   test('has one first-level heading and never skips a level', async ({ page }) => {
     const headings = await page.locator('h1, h2, h3, h4, h5, h6').evaluateAll((nodes) =>

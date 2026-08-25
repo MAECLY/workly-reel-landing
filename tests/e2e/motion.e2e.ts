@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 
 import { hero, sectionIds } from '../../content';
 import { renderedPages } from './pages';
-import { withMotion, withoutMotion } from './support';
+import { settle, stateDriver, withMotion, withoutMotion } from './support';
 
 /**
  * Whether asking for less motion changes anything.
@@ -90,6 +90,45 @@ const motionState = (page: Page): Promise<MotionState> =>
     };
   });
 
+/**
+ * The same sweep again, once for every state a reader can put an element into.
+ *
+ * The sweep above reads the page as it loads, which is the one condition an
+ * animation is least likely to be forgotten in. `.lp-figure__frame:hover` is
+ * already a rule in the landing layer; an `animation` added beside the
+ * `border-color` in it, outside the reduced-motion guard, would move under
+ * every pointer and appear in no measurement anywhere in this repository.
+ *
+ * Which states are entered is read out of the shipped stylesheets rather than
+ * named here, so a rule written against a state nobody has used yet is swept
+ * from the moment it exists.
+ *
+ * Only what is *declared* is collected. What the browser reports as running is
+ * deliberately not, and the reason is a property of the design system rather
+ * than an excuse: entering a state changes colours, the package transitions
+ * colour on its controls, and under `reduce` it collapses those transitions to
+ * a hundredth of a millisecond instead of removing them. So a state entered
+ * always has transitions briefly in flight, and counting them would fail on
+ * correct behaviour. A declared `animation-name` cannot be explained that way:
+ * the package forces `animation-duration` to nothing under `reduce`, so a name
+ * surviving there is a human writing a declaration in the wrong place.
+ */
+const animationsDeclaredInEveryState = async (
+  page: Page,
+): Promise<{ readonly found: readonly string[]; readonly states: readonly string[] }> => {
+  const states = await stateDriver(page);
+  const found: string[] = [];
+
+  for (const state of states.reachable) {
+    await states.enter(state);
+    const { declared } = await motionState(page);
+    for (const one of declared) found.push(`with :${state} applied, ${one}`);
+    await states.leave();
+  }
+
+  return { found, states: states.reachable };
+};
+
 /** How many of the landing layer's own reveals are moving. */
 const revealState = (page: Page): Promise<{ total: number; animating: number }> =>
   page.evaluate((selector) => {
@@ -126,6 +165,15 @@ for (const target of renderedPages) {
       expect(response?.status(), `${target.path} did not answer as it is meant to`).toBe(
         target.status,
       );
+
+      // The package keeps its transitions under `reduce` and collapses them to
+      // a hundredth of a millisecond, so a page read in the same task as its
+      // own arrival still has one or two in flight and the count below is not
+      // yet nought. Measured: this failed on roughly one run in sixteen, on
+      // the not-found page, before this line existed. Waiting measures the
+      // settled page, which is what the test claims to be reading; it changes
+      // nothing about what is asserted.
+      await settle(page);
     });
 
     test('is handed the finished page, with nothing left to animate', async ({ page }) => {
@@ -137,6 +185,18 @@ for (const target of renderedPages) {
       expect(state.running, 'the browser is running an animation under reduce').toBe(0);
       expect(state.faded, 'content is still waiting for an animation to reveal it').toEqual([]);
       expect(state.scrollBehavior).toBe('auto');
+    });
+
+    test('holds still in every state a reader can put it into', async ({ page }) => {
+      const { found, states } = await animationsDeclaredInEveryState(page);
+
+      // A sweep of no states is a sweep that passes on anything, and this page
+      // is built from a design system whose controls all have a hover fill.
+      expect(states, 'the stylesheets declare no state a reader can reach').not.toEqual([]);
+      expect(
+        found,
+        'an animation is declared outside the reduced-motion guard, in a state the page is only read in under a pointer or a keyboard',
+      ).toEqual([]);
     });
   });
 }
