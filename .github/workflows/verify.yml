@@ -25,19 +25,31 @@ jobs:
         with:
           node-version: 22
 
-      # The design system is a private repository resolved over SSH. Without a
-      # key nothing can install, so the job says which command to run locally
-      # rather than reporting a pass that skipped every gate.
+      # The design system is a private repository resolved over SSH, so without a
+      # key nothing installs and every gate below is skipped.
+      #
+      # This step used to emit a `::warning::` and carry on, which meant the job
+      # reported success having run nothing at all: 14 of 14 real steps skipped,
+      # a green tick over zero work. That is the exact failure this repository's
+      # test suite exists to prevent, so it now fails instead.
+      #
+      # The one place a missing key is legitimate is a pull request from a fork,
+      # where GitHub withholds secrets by design and the contributor could not
+      # supply one. That case still skips, and says so.
       - name: Check for design-system access
         id: access
         env:
           DEPLOY_KEY: ${{ secrets.WORKLY_REEL_UI_DEPLOY_KEY }}
+          FROM_FORK: ${{ github.event.pull_request.head.repo.fork }}
         run: |
-          if [ -z "$DEPLOY_KEY" ]; then
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No WORKLY_REEL_UI_DEPLOY_KEY configured, so the design system cannot be resolved and every gate is skipped. Run locally with: pnpm install && pnpm verify"
-          else
+          if [ -n "$DEPLOY_KEY" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
+          elif [ "$FROM_FORK" = "true" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::A fork cannot be given the design-system key, so the gates below did not run. A maintainer must run them before merging."
+          else
+            echo "::error::No WORKLY_REEL_UI_DEPLOY_KEY is configured, so every gate below would be skipped and this job would report a pass having verified nothing. Add the private half of a read-only deploy key for MAECLY/workly-reel-ui as a repository secret."
+            exit 1
           fi
 
       - name: Configure SSH
