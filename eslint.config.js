@@ -26,6 +26,16 @@ export default [
       'node_modules/**',
       'next-env.d.ts',
       'public/**',
+      // Build output and test artefacts, all of them bundled JavaScript written
+      // by a tool rather than by anyone here. `out/` is the exported site; the
+      // rest are written by Playwright and Vitest. Without these, whether
+      // `pnpm lint` passes depends on whether anyone has run the tests since
+      // the last clean, which is not a property a gate should have.
+      'out/**',
+      'playwright-report/**',
+      'blob-report/**',
+      'test-results/**',
+      'coverage/**',
       // See the note above. Not a preference.
       '**/*.ts',
       '**/*.tsx',
