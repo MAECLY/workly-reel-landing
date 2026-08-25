@@ -28,6 +28,18 @@ export const withoutMotion = async (page: Page): Promise<void> => {
 };
 
 /**
+ * Ask for the rendering a reader who has expressed no preference receives.
+ *
+ * This is Playwright's default, and stating it anyway is the point: the only
+ * spec that calls it measures the page with motion allowed so that the
+ * reduced-motion measurement beside it means something. A page that never
+ * animates at all would satisfy `withoutMotion` on its own.
+ */
+export const withMotion = async (page: Page): Promise<void> => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+};
+
+/**
  * Bring every lazily loaded figure into the document.
  *
  * Only the hero image is eager. The rest carry `loading="lazy"`, so their

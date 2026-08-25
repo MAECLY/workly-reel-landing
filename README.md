@@ -229,21 +229,58 @@ viewport. WebKit is not installed and is not used. The specs live in
 `tests/e2e/` behind a `.e2e.ts` suffix, so neither runner can pick up the
 other's files.
 
-| Spec                          | Covers                                                                                                                                                                                                                                                                |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/e2e/page.e2e.ts`       | 200 from `next start`, the five sections and the run block by their real ids, every workflow stage anchored, the primary action scrolling the run instructions into view and moving focus with it, and every manifest image decoding at the size the manifest records |
-| `tests/e2e/metadata.e2e.ts`   | The canonical with its trailing slash, `noindex, nofollow` in the meta tag and in the `X-Robots-Tag` header, the Open Graph image resolving to the real export byte for byte, and `/sitemap.xml` and `/robots.txt` rooted at the agreed origin                        |
-| `tests/e2e/responsive.e2e.ts` | At 390, 768, 1280, and 1680: no horizontal scroll, no element past the viewport, the headline in four lines or fewer, and every interactive target at least 24 by 24                                                                                                  |
-| `tests/e2e/a11y.e2e.ts`       | axe-core reporting nothing serious or critical in either theme, one `h1`, no skipped heading level, a skip link that moves the tab sequence into `<main>`, and a non-empty `alt` on every image                                                                       |
+**`pnpm verify` runs this step as `CI=1 pnpm test:e2e`, and running it by hand
+is worth doing the same way.** Server reuse is the reason: with anything already
+listening on 3210, `pnpm build` never runs and the suite reports on whatever
+that server was built from. A deliberately broken `alt` attribute was measured
+passing 10 of 10 accessibility tests against a stale server while the source on
+disk was already wrong.
+
+| Spec                          | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tests/e2e/page.e2e.ts`       | 200 from `next start`, the five sections and the run block by their real ids, every workflow stage anchored, the primary action scrolling the run instructions into view and moving focus with it, and every manifest image decoding at the size the manifest records                                                                                                                                                                                                                                                                                        |
+| `tests/e2e/metadata.e2e.ts`   | The canonical with its trailing slash, `noindex, nofollow` in the meta tag and in the `X-Robots-Tag` header, the Open Graph image resolving to the real export byte for byte, and `/sitemap.xml` and `/robots.txt` rooted at the agreed origin                                                                                                                                                                                                                                                                                                               |
+| `tests/e2e/responsive.e2e.ts` | At 390, 768, 1280, and 1680: no horizontal scroll, no element past the viewport, the headline in four lines or fewer, and every interactive target at least 24 by 24                                                                                                                                                                                                                                                                                                                                                                                         |
+| `tests/e2e/a11y.e2e.ts`       | axe-core reporting nothing serious or critical in either theme, one `h1`, no skipped heading level, a skip link that moves the tab sequence into `<main>`, and a non-empty `alt` on every image                                                                                                                                                                                                                                                                                                                                                              |
+| `tests/e2e/keyboard.e2e.ts`   | A declared inventory of every control the page owes a keyboard, each one present and rendered, then the whole tab sequence walked forwards and back against that inventory, with the design system's focus ring painted on every stop and both sideways-scrolling registers reachable                                                                                                                                                                                                                                                                        |
+| `tests/e2e/motion.e2e.ts`     | Both sides of `prefers-reduced-motion`: every element and both of its generated boxes swept for a declared or running animation under `reduce`, and an instant jump to the run block, against a page that genuinely rises, reveals, and glides under `no-preference`                                                                                                                                                                                                                                                                                         |
+| `tests/e2e/no-script.e2e.ts`  | The page with scripting off: the copy, the sections, and the theme arrive in the first response, the in-page actions are followed by the browser alone, and nothing stays hidden waiting for an observer                                                                                                                                                                                                                                                                                                                                                     |
+| `tests/e2e/theme.e2e.ts`      | Every colour the page paints, swept from the document rather than from a list of surfaces: each one repaints on the toggle unless the token document says the themes share it, and each one comes back on the way home                                                                                                                                                                                                                                                                                                                                       |
+| `tests/e2e/contracts.e2e.ts`  | The seams between the documents this page publishes: the headers `next.config.ts` promises reaching every surface including the image optimiser and an unpublished address, a policy naming no origin but this one and no request breaking it, the sitemap advertising only addresses that answer and claim that canonical, the robots file pointing at a sitemap that is really served, a 404 that is a 404, the post copy quoted exactly as the export wrote it, and the design system commit the footer publishes matching the one the lockfile installed |
 
 Every expectation is read from `content/` and `public/assets/manifest.json`, so
 renaming a section or replacing an asset fails the suite rather than leaving it
 asserting a string nobody updated.
 
-The specs ask for `prefers-reduced-motion: reduce` before measuring anything.
+Most specs ask for `prefers-reduced-motion: reduce` before measuring anything.
 The page reveals its sections on a timer and on a scroll timeline, and a colour
 sampled halfway through that fade is one no reader ever sees; axe reported a
-different contrast ratio on every run until this was settled.
+different contrast ratio on every run until this was settled. `motion.e2e.ts` is
+the exception, and has to be: it is the only spec that asks for motion, because
+the reduced rendering means nothing unless the page it is compared against is
+really moving.
+
+Three defects used to pass this suite, each confirmed by planting it and
+watching every test stay green, and each of them the same mistake: a gate whose
+expectation was read from the thing it was checking. `keyboard.e2e.ts` built the
+expected tab order from the document, so hiding the skip link removed it from
+the walk and from the expectation together. `motion.e2e.ts` sampled `.lp-rise`
+and `.lp-reveal`, so an animation on `.lp-status` outside the
+`prefers-reduced-motion: no-preference` block was invisible to it.
+`theme.e2e.ts` compared five named surfaces, so every specification panel could
+have stayed dark in the light theme. All three now take their expectation from
+somewhere the page cannot edit: a written inventory drawn from `content/`, a
+sweep of every element on the page, and a sweep of every colour it paints. Each
+was re-planted afterwards and each is now caught.
+
+What still passes, so a green run is not read as covering it: a section heading
+demoted from `h2` to `h4` where the heading before it is an `h3`, which
+`a11y.e2e.ts` and axe both consider legal enough not to block on. And the header
+check in `contracts.e2e.ts` reads its expectation from `next.config.ts`, so
+deleting a promise there deletes the expectation with it; what anchors that from
+the other side is `metadata.e2e.ts`, which pins `noindex, nofollow` literally,
+and the policy check, which refuses any origin but this one however the config
+is written.
 
 ### Smoke
 
