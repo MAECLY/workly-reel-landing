@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 import { hero, sectionIds } from '../../content';
+import { renderedPages } from './pages';
 import { withMotion, withoutMotion } from './support';
 
 /**
@@ -15,6 +16,11 @@ import { withMotion, withoutMotion } from './support';
  *
  * Both halves are measured here, because the reduced half only means
  * something next to a page that is otherwise genuinely moving.
+ *
+ * The reduced half is asked of every page the router renders. It used to be
+ * asked of `/` alone, and one stylesheet paints every route: an animation on
+ * `.lp-notfound__code`, declared outside the guard, is on a class the landing
+ * page never uses and was therefore on no page this spec opened.
  */
 
 /** The classes the landing layer animates, used only to prove the page moves. */
@@ -111,19 +117,34 @@ const scrollAcrossTheClick = (page: Page): Promise<{ before: number; after: numb
     return { before, after: window.scrollY };
   });
 
+for (const target of renderedPages) {
+  test.describe(`a reader who has asked for reduced motion, on ${target.name}`, () => {
+    test.beforeEach(async ({ page }) => {
+      await withoutMotion(page);
+      const response = await page.goto(target.path);
+
+      expect(response?.status(), `${target.path} did not answer as it is meant to`).toBe(
+        target.status,
+      );
+    });
+
+    test('is handed the finished page, with nothing left to animate', async ({ page }) => {
+      const state = await motionState(page);
+
+      expect(state.declared, 'an animation is declared outside the reduced-motion guard').toEqual(
+        [],
+      );
+      expect(state.running, 'the browser is running an animation under reduce').toBe(0);
+      expect(state.faded, 'content is still waiting for an animation to reveal it').toEqual([]);
+      expect(state.scrollBehavior).toBe('auto');
+    });
+  });
+}
+
 test.describe('a reader who has asked for reduced motion', () => {
   test.beforeEach(async ({ page }) => {
     await withoutMotion(page);
     await page.goto('/');
-  });
-
-  test('is handed the finished page, with nothing left to animate', async ({ page }) => {
-    const state = await motionState(page);
-
-    expect(state.declared, 'an animation is declared outside the reduced-motion guard').toEqual([]);
-    expect(state.running, 'the browser is running an animation under reduce').toBe(0);
-    expect(state.faded, 'content is still waiting for an animation to reveal it').toEqual([]);
-    expect(state.scrollBehavior).toBe('auto');
   });
 
   test('is put at the run block in one jump rather than glided to it', async ({ page }) => {

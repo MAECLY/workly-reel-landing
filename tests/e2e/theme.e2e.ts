@@ -7,7 +7,8 @@ import {
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-import { showTheme, withoutMotion } from './support';
+import { renderedPages } from './pages';
+import { settle, showTheme, withoutMotion } from './support';
 
 /**
  * The theme control, as a reader meets it.
@@ -19,21 +20,32 @@ import { showTheme, withoutMotion } from './support';
  * landing layer from a literal instead of a token, and the attribute would
  * still flip, axe would pass twice over the same dark page, and the jsdom
  * suite would not notice either, because jsdom applies no stylesheet at all.
+ *
+ * Everything below runs against every page the router renders, the not-found
+ * page included. It used to run against `/` alone, which made "every surface
+ * repaints" a sentence about one route.
  */
 
 /** What Chromium reports for a colour the element does not paint at all. */
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 
+/** What it reports for an element with no background image or gradient. */
+const NO_IMAGE = 'none';
+
 /**
- * The two themes are allowed to agree on a colour only where the token
- * document says they do.
+ * A colour no theme contains, used to ask an element where its colour comes
+ * from rather than what it currently is.
+ */
+const SENTINEL = 'rgb(1, 2, 3)';
+
+/**
+ * The colours the token document gives both themes the same value.
  *
  * `text-on-accent` is the one today: the accent is the same colour in both
  * themes, so the text that sits on it has to be too, and the skip link and the
  * primary action are meant to look identical on either side of the toggle.
  * Derived from the generated token document rather than listed here, so a
- * second shared colour later needs no edit to this file, and so a surface
- * cannot be excused by anything the token document does not actually share.
+ * second shared colour later needs no edit to this file.
  */
 const SHARED_VARIABLES = semanticColorNames
   .filter((name) => darkTheme[name] === lightTheme[name])
@@ -52,10 +64,21 @@ interface Paint {
   readonly path: string;
   readonly name: string;
   readonly background: string;
+  /**
+   * The other half of a background.
+   *
+   * A gradient is a background *image*, and an element painting one reports
+   * `rgba(0, 0, 0, 0)` for its background colour, so a sweep that read the
+   * colour alone saw a panel repainted in two hardcoded darks as a panel that
+   * paints no background at all and compared nothing.
+   */
+  readonly backgroundImage: string;
   readonly text: string;
   /** The colour of the first side that is actually drawn, if any is. */
   readonly border: string;
 }
+
+const CHANNELS = ['background', 'backgroundImage', 'text', 'border'] as const;
 
 /**
  * Every colour the page paints, swept from the page itself.
@@ -103,6 +126,7 @@ const paintOf = (page: Page): Promise<readonly Paint[]> =>
         path: pathOf(node),
         name: nameOf(node),
         background: style.backgroundColor,
+        backgroundImage: style.backgroundImage,
         text: style.color,
         border:
           drawn === undefined
@@ -112,36 +136,65 @@ const paintOf = (page: Page): Promise<readonly Paint[]> =>
     });
   });
 
-/**
- * Resolve the shared token colours the way the sweep above reports colours.
- *
- * Read through the browser rather than converted from the hex in the token
- * document, so both sides of the comparison are strings Chromium wrote and no
- * colour-space arithmetic sits between the token and the assertion.
- */
-const sharedColours = (page: Page): Promise<readonly string[]> =>
-  page.evaluate(
-    (variables) => {
-      const probe = document.createElement('span');
-      probe.style.display = 'none';
-      document.body.append(probe);
-
-      const resolved = variables.map((variable) => {
-        probe.style.color = `var(${variable})`;
-        return window.getComputedStyle(probe).color;
-      });
-
-      probe.remove();
-      return resolved;
+/** Set or clear the shared tokens on the root, where the themes declare them. */
+const overrideShared = async (page: Page, value: string | null): Promise<void> => {
+  await page.evaluate(
+    ({ variables, colour }) => {
+      for (const variable of variables) {
+        if (colour === null) {
+          document.documentElement.style.removeProperty(variable);
+        } else {
+          document.documentElement.style.setProperty(variable, colour);
+        }
+      }
     },
-    [...SHARED_VARIABLES],
+    { variables: [...SHARED_VARIABLES], colour: value },
   );
 
-/** Something the element paints, as opposed to a colour it merely computes. */
-const painted = (colour: string, shared: readonly string[]): boolean =>
-  colour !== TRANSPARENT && !shared.includes(colour);
+  await settle(page);
+};
 
-const CHANNELS = ['background', 'text', 'border'] as const;
+/**
+ * Which surfaces are painted *from* a shared token, asked of the page rather
+ * than inferred from the colour it happens to be.
+ *
+ * The excuse this list grants used to be granted by colour value: anything
+ * painting the same colour as a shared token was forgiven for not changing.
+ * That forgives a surface for a fact about its value rather than about where
+ * its value comes from, and a border hardcoded to the literal a shared token
+ * holds is exactly the case it lets through - it matches, so it is compared
+ * against nothing.
+ *
+ * Overriding the tokens to a colour no theme contains asks the question the
+ * other way round. A channel that moves is one the token feeds and is
+ * genuinely allowed to be identical in both themes; a channel that sits still
+ * under the override is painted from somewhere else, whatever it looks like,
+ * and owes this page two colours like every other channel.
+ */
+const pairsFedByShared = async (page: Page): Promise<ReadonlySet<string>> => {
+  const before = await paintOf(page);
+  await overrideShared(page, SENTINEL);
+  const after = await paintOf(page);
+  await overrideShared(page, null);
+
+  const overridden = new Map(after.map((paint) => [paint.path, paint]));
+
+  return new Set(
+    before.flatMap((paint) => {
+      const now = overridden.get(paint.path);
+      if (now === undefined) {
+        return [];
+      }
+
+      return CHANNELS.filter((channel) => paint[channel] !== now[channel]).map(
+        (channel) => `${paint.path}|${channel}`,
+      );
+    }),
+  );
+};
+
+/** Something the element paints, as opposed to a colour it merely computes. */
+const painted = (value: string): boolean => value !== TRANSPARENT && value !== NO_IMAGE;
 
 /**
  * Every colour that stayed exactly as it was, other than the ones that are
@@ -154,7 +207,7 @@ const CHANNELS = ['background', 'text', 'border'] as const;
 const coloursThatDidNotChange = (
   before: readonly Paint[],
   after: readonly Paint[],
-  shared: readonly string[],
+  fedByShared: ReadonlySet<string>,
 ): readonly string[] => {
   const was = new Map(before.map((paint) => [paint.path, paint]));
 
@@ -165,7 +218,10 @@ const coloursThatDidNotChange = (
     }
 
     return CHANNELS.filter(
-      (channel) => painted(paint[channel], shared) && previous[channel] === paint[channel],
+      (channel) =>
+        painted(paint[channel]) &&
+        !fedByShared.has(`${paint.path}|${channel}`) &&
+        previous[channel] === paint[channel],
     ).map((channel) => `${paint.name} still paints its ${channel} ${paint[channel]}`);
   });
 };
@@ -191,8 +247,12 @@ const coloursThatChanged = (
 };
 
 /** How many colours a sweep found worth comparing at all. */
-const paintedCount = (sweep: readonly Paint[], shared: readonly string[]): number =>
-  sweep.flatMap((paint) => CHANNELS.filter((channel) => painted(paint[channel], shared))).length;
+const paintedCount = (sweep: readonly Paint[]): number =>
+  sweep.flatMap((paint) => CHANNELS.filter((channel) => painted(paint[channel]))).length;
+
+/** How many elements the document holds, which the sweep has to keep up with. */
+const elementCount = (page: Page): Promise<number> =>
+  page.evaluate(() => document.querySelectorAll('*').length);
 
 /** The colour behind everything, which is the one a reader names the theme by. */
 const canvasOf = (page: Page): Promise<string> =>
@@ -214,77 +274,87 @@ const switchTo = async (page: Page, theme: 'dark' | 'light'): Promise<void> => {
   await page.mouse.move(0, 0);
 };
 
-test.describe('the theme control', () => {
-  test.beforeEach(async ({ page }) => {
-    await withoutMotion(page);
-    await page.goto('/');
+for (const target of renderedPages) {
+  test.describe(`the theme control on ${target.name}`, () => {
+    test.beforeEach(async ({ page }) => {
+      await withoutMotion(page);
+      const response = await page.goto(target.path);
+
+      expect(response?.status(), `${target.path} did not answer as it is meant to`).toBe(
+        target.status,
+      );
+    });
+
+    test('repaints every surface it paints, rather than only renaming itself', async ({ page }) => {
+      const dark = await paintOf(page);
+      const fedByShared = await pairsFedByShared(page);
+      const darkCanvas = await canvasOf(page);
+
+      // A floor drawn from the document rather than a number: it says the
+      // sweep is looking at the page and not at an empty one, at whatever size
+      // the page happens to be. Nearly every element paints at least the text
+      // colour it inherits, so a sweep that has stopped finding surfaces falls
+      // under this long before it reaches nothing.
+      expect(paintedCount(dark), 'the sweep found almost nothing painted').toBeGreaterThan(
+        (await elementCount(page)) / 2,
+      );
+
+      await switchTo(page, 'light');
+
+      // Polled rather than read once. Under reduced motion the package collapses
+      // every transition to a hundredth of a millisecond instead of removing it,
+      // so the frame in which the attribute changes still reports the colour the
+      // page is leaving. Polling measures the theme; a single read measures the
+      // frame it happened to land in.
+      await expect
+        .poll(async () => coloursThatDidNotChange(dark, await paintOf(page), fedByShared), {
+          message: 'a surface kept its dark colours after the page was switched to light',
+        })
+        .toEqual([]);
+
+      // Named separately because the sweep above forgives a colour a shared
+      // token feeds, and the canvas is the one colour that can never be one of
+      // those.
+      expect(await canvasOf(page), 'the page is the same colour in both themes').not.toBe(
+        darkCanvas,
+      );
+    });
+
+    test('puts the page back exactly as it found it', async ({ page }) => {
+      const dark = await paintOf(page);
+      const fedByShared = await pairsFedByShared(page);
+
+      await switchTo(page, 'light');
+      await expect
+        .poll(async () => coloursThatDidNotChange(dark, await paintOf(page), fedByShared))
+        .toEqual([]);
+
+      await switchTo(page, 'dark');
+      await expect
+        .poll(async () => coloursThatChanged(dark, await paintOf(page)), {
+          message: 'switching back left the page in a third state',
+        })
+        .toEqual([]);
+    });
+
+    test('is operable from the keyboard and says what it will do next', async ({ page }) => {
+      const toggle = page.getByRole('banner').getByRole('button');
+      const before = await toggle.getAttribute('aria-label');
+
+      // The skip link is the first stop and the toggle the second; the order
+      // itself is `keyboard.e2e.ts`'s to defend.
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Tab');
+      await expect(toggle).toBeFocused();
+
+      await page.keyboard.press('Enter');
+
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      expect(before).not.toBeNull();
+      expect(
+        await toggle.getAttribute('aria-label'),
+        'the control still offers the theme it has just applied',
+      ).not.toBe(before);
+    });
   });
-
-  test('repaints every surface it paints, rather than only renaming itself', async ({ page }) => {
-    const shared = await sharedColours(page);
-    const dark = await paintOf(page);
-    const darkCanvas = await canvasOf(page);
-
-    // A floor rather than a number: it says the sweep is looking at the page
-    // and not at an empty document, without pinning how many surfaces the
-    // design happens to have this week.
-    expect(paintedCount(dark, shared), 'the sweep found almost nothing painted').toBeGreaterThan(
-      100,
-    );
-
-    await switchTo(page, 'light');
-
-    // Polled rather than read once. Under reduced motion the package collapses
-    // every transition to a hundredth of a millisecond instead of removing it,
-    // so the frame in which the attribute changes still reports the colour the
-    // page is leaving. Polling measures the theme; a single read measures the
-    // frame it happened to land in.
-    await expect
-      .poll(async () => coloursThatDidNotChange(dark, await paintOf(page), shared), {
-        message: 'a surface kept its dark colours after the page was switched to light',
-      })
-      .toEqual([]);
-
-    // Named separately because the sweep above forgives a colour the token
-    // document shares between the themes, and the canvas is the one colour
-    // that can never be one of those.
-    expect(await canvasOf(page), 'the page is the same colour in both themes').not.toBe(darkCanvas);
-  });
-
-  test('puts the page back exactly as it found it', async ({ page }) => {
-    const shared = await sharedColours(page);
-    const dark = await paintOf(page);
-
-    await switchTo(page, 'light');
-    await expect
-      .poll(async () => coloursThatDidNotChange(dark, await paintOf(page), shared))
-      .toEqual([]);
-
-    await switchTo(page, 'dark');
-    await expect
-      .poll(async () => coloursThatChanged(dark, await paintOf(page)), {
-        message: 'switching back left the page in a third state',
-      })
-      .toEqual([]);
-  });
-
-  test('is operable from the keyboard and says what it will do next', async ({ page }) => {
-    const toggle = page.getByRole('banner').getByRole('button');
-    const before = await toggle.getAttribute('aria-label');
-
-    // The skip link is the first stop and the toggle the second; the order
-    // itself is `keyboard.e2e.ts`'s to defend.
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Tab');
-    await expect(toggle).toBeFocused();
-
-    await page.keyboard.press('Enter');
-
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    expect(before).not.toBeNull();
-    expect(
-      await toggle.getAttribute('aria-label'),
-      'the control still offers the theme it has just applied',
-    ).not.toBe(before);
-  });
-});
+}

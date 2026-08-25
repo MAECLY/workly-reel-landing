@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 import { skipLink } from '../../content';
-import { loadEveryImage, showTheme, withoutMotion } from './support';
+import { loadEveryImage, settle, showTheme, withoutMotion } from './support';
 
 /**
  * Accessibility, checked against the rendered page in both themes.
@@ -91,6 +91,63 @@ test.describe('the accessibility of the page', () => {
     await page.keyboard.press('Tab');
     const landedInsideMain = await main.evaluate((node) => node.contains(document.activeElement));
     expect(landedInsideMain).toBe(true);
+  });
+
+  test('paints the skip link where it says it is, however it is hidden', async ({ page }) => {
+    /*
+      The test above proves the link is focusable, reachable, and does its job,
+      and `toBeInViewport` proves its box is on screen. None of that is the
+      same as a reader seeing it. The link is hidden until it takes focus, and
+      the technique doing the hiding is an implementation detail that gets
+      refactored: move from `transform` to `clip-path` and leave the
+      `:focus-visible` rule reverting the transform, and the box stays exactly
+      where it was, in the viewport, focused, and invisible for good.
+
+      So this asks the two questions the box cannot answer. Is the link the
+      thing a reader would touch at that point, which no clip or cover survives;
+      and does taking focus change what is painted there at all, which nothing
+      invisible survives.
+    */
+    await page.keyboard.press('Tab');
+
+    const link = page.getByRole('link', { name: skipLink.label });
+    await expect(link).toBeFocused();
+    await expect(link).toBeInViewport();
+    await settle(page);
+
+    const box = await link.boundingBox();
+    if (box === null) {
+      throw new Error('the skip link has no box at all once it has focus');
+    }
+
+    const focused = await page.screenshot({ clip: box });
+
+    const topmost = await link.evaluate((node) => {
+      const at = node.getBoundingClientRect();
+      const found = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2);
+      return found === null
+        ? 'nothing'
+        : found === node || node.contains(found)
+          ? 'itself'
+          : `${found.tagName.toLowerCase()}.${String(found.className)}`;
+    });
+
+    expect(topmost, 'something else is what a reader would touch at the skip link').toBe('itself');
+
+    await page.evaluate(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) {
+        active.blur();
+      }
+    });
+    await settle(page);
+
+    const blurred = await page.screenshot({ clip: box });
+
+    expect(
+      focused.equals(blurred),
+      'the skip link paints nothing a reader can see when it takes focus',
+    ).toBe(false);
   });
 
   test('gives every image a non-empty alt', async ({ page }) => {
