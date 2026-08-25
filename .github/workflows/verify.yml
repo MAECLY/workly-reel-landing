@@ -75,3 +75,52 @@ jobs:
       - name: Production build
         if: steps.access.outputs.available == 'true'
         run: pnpm run build
+
+      # Both of the following are new gates. `pnpm test:e2e` was declared long
+      # before a Playwright config existed and could only ever exit 1, and
+      # nothing here ran it, which is why nobody noticed.
+      - name: Smoke
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run smoke
+
+      # Keyed on the lockfile because that is what pins the Playwright version,
+      # and a browser build from a different version is the one thing this cache
+      # must not serve.
+      - name: Cache the browser
+        id: browser
+        if: steps.access.outputs.available == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # Chromium only. Both projects are Chromium, one at 1280x900 and one at a
+      # phone viewport, so Firefox and WebKit would be downloaded and never run.
+      - name: Browsers
+        if: steps.access.outputs.available == 'true' && steps.browser.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The cache holds the browser, not the system libraries it links against,
+      # and those live outside any path actions/cache can restore.
+      - name: Browser system libraries
+        if: steps.access.outputs.available == 'true' && steps.browser.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      # One class this gate does not catch, named so a green run is not read as
+      # covering it: a section heading demoted from h2 to h4 where the heading
+      # immediately before it in document order is an h3. The heading check in
+      # tests/e2e/a11y.e2e.ts compares each heading against its predecessor, so
+      # that descent is legal to it, and axe reaches the same verdict at
+      # moderate impact, below the serious threshold this gate blocks on. A
+      # demotion that follows the h1 directly is caught.
+      - name: End to end
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run test:e2e
+
+      - name: End-to-end report
+        if: failure() && steps.access.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
