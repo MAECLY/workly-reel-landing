@@ -399,9 +399,20 @@ public; the design system and the desktop application remain private.
 | Thing         | Value                                                   |
 | ------------- | ------------------------------------------------------- |
 | DNS           | `CNAME workly-reel -> maecly.github.io`, proxy disabled |
-| Custom domain | `public/CNAME`, copied into `out/` by the export        |
+| Custom domain | The repository's Pages setting. See the note below      |
 | Build         | `pnpm build`, then `pnpm smoke` against `out/`          |
 | Source        | GitHub Actions, not a branch                            |
+
+The custom domain is a **repository setting**, not the `public/CNAME` file. A
+branch-published site reads that file; an Actions-published one ignores it.
+Measured on a real deploy: the artefact carried the file and the configured
+domain stayed empty until it was set through the API. `public/CNAME` is kept
+only so a switch back to branch publishing would not silently lose the domain,
+and the deploy workflow asserts the _setting_ rather than the file.
+
+If the domain is ever cleared, the site moves to the `maecly.github.io` address,
+where every root-absolute asset path 404s. The page still renders, unstyled -
+a failure that looks like a design regression rather than a configuration one.
 
 The Cloudflare record is deliberately **DNS only**. GitHub has to reach the host
 directly to issue its certificate; behind the orange cloud it cannot, and the
