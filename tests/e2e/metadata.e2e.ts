@@ -26,10 +26,13 @@ test.describe('the published metadata', () => {
     expect(site.canonical).toBe('https://workly-reel.maecly.com/');
   });
 
-  test('refuses indexing in the markup and in the response header', async ({ page }) => {
-    const response = await page.goto('/');
+  test('refuses indexing in the markup', async ({ page }) => {
+    // In the markup only. The refusal used to be sent twice, as a header and as
+    // this tag, and the static host that publishes the site can send no header
+    // at all. The tag is what every compliant crawler reads, so the promise
+    // survives; the belt-and-braces did not.
+    await page.goto('/');
 
-    expect(response?.headers()['x-robots-tag']).toBe(NO_INDEX);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', NO_INDEX);
   });
 
@@ -72,12 +75,15 @@ test.describe('the published metadata', () => {
     const sitemap = await request.get('/sitemap.xml');
     expect(sitemap.status()).toBe(200);
     expect(sitemap.headers()['content-type']).toContain('xml');
-    expect(sitemap.headers()['x-robots-tag']).toBe(NO_INDEX);
     expect(await sitemap.text()).toContain(`<loc>${site.canonical}</loc>`);
 
     const robots = await request.get('/robots.txt');
     expect(robots.status()).toBe(200);
-    expect(robots.headers()['x-robots-tag']).toBe(NO_INDEX);
+
+    // Neither of these carries a noindex marker any more. They are not HTML, so
+    // they cannot hold a meta tag, and the static host cannot send the header
+    // that used to cover them. What still refuses a crawler is the file itself,
+    // asserted immediately below: `Disallow: /` is the whole site.
 
     const rules = await robots.text();
     expect(rules).toContain('Disallow: /');

@@ -1,27 +1,31 @@
 import { expect, test } from '@playwright/test';
 
-import { SIGNAL_EXPORT, realAsset } from '../../content';
 import { renderedPages } from './pages';
 import { loadEveryImage, withoutMotion } from './support';
 
 /**
  * What this page is allowed to be, and what it is allowed to reach.
  *
- * A static marketing page has no session to steal and no endpoint to abuse, so
- * its permissions are entirely in its response headers: the policy it
- * publishes, the guards beside it, and the refusal to be indexed while Phase 0
- * is the published thing.
+ * This file used to read response headers. It cannot any more, and the reason
+ * is worth stating plainly rather than working around: the site is exported to
+ * static files and published by GitHub Pages, which serves files and offers no
+ * way to configure a header. Everything that was a header is now either in the
+ * document or gone.
  *
- * `contracts.e2e.ts` already checks that those headers reach every surface,
- * and does it by reading `next.config.ts` - which is the right way to ask
- * whether a promise is kept everywhere, and no way at all to ask whether the
- * promise is still worth making. Delete `frame-ancestors 'none'` from the
- * config and the expectation goes with it: the header still exists, still
- * matches itself on every surface, and the page can be framed by anybody.
+ * What moved into the document:
+ *   - the Content-Security-Policy, as a `<meta http-equiv>` tag;
+ *   - the referrer policy, as a `<meta name="referrer">` tag;
+ *   - `noindex, nofollow`, which was always in the markup as well as the header.
  *
- * So the directives are written out here instead, one by one, and read back
- * from the server. This file is the other end of that check, and the place a
- * deliberate change to the policy has to be recorded.
+ * What is gone, and is asserted nowhere because asserting it would be a lie:
+ *   - `frame-ancestors`, which browsers ignore in a meta tag by specification.
+ *     The page can be framed. There is a test below that says so out loud.
+ *   - `X-Content-Type-Options: nosniff`, which has no meta equivalent at all.
+ *
+ * Putting Cloudflare in front of the origin restores both as real headers, and
+ * `maecly.com` already resolves through Cloudflare. Until that is done, this
+ * file describes a site with less protection than the Node server had, because
+ * that is the site being published.
  */
 
 /**
@@ -30,9 +34,12 @@ import { loadEveryImage, withoutMotion } from './support';
  * `'unsafe-inline'` appears twice because the framework's bootstrap script and
  * the theme attribute need it; it is a weakness this file records rather than
  * one it can refuse. Everything else is a refusal worth naming: nothing is
- * embedded (`object-src`), nothing is posted anywhere (`form-action`), no
- * injected `<base>` can re-point every relative URL on the page (`base-uri`),
- * and nobody may put this page inside their own (`frame-ancestors`).
+ * embedded (`object-src`), nothing is posted anywhere (`form-action`), and no
+ * injected `<base>` can re-point every relative URL on the page (`base-uri`).
+ *
+ * `frame-ancestors` is deliberately absent. It is meaningless in a meta tag, so
+ * listing it here would make the suite green over a protection that does not
+ * exist.
  */
 const POLICY: Readonly<Record<string, readonly string[]>> = {
   'default-src': ["'self'"],
@@ -44,17 +51,10 @@ const POLICY: Readonly<Record<string, readonly string[]>> = {
   'object-src': ["'none'"],
   'base-uri': ["'self'"],
   'form-action': ["'none'"],
-  'frame-ancestors': ["'none'"],
-};
-
-/** The guards beside the policy, pinned to their value rather than to the config. */
-const GUARDS: Readonly<Record<string, string>> = {
-  'x-robots-tag': 'noindex, nofollow',
-  'x-content-type-options': 'nosniff',
-  'referrer-policy': 'strict-origin-when-cross-origin',
 };
 
 const NO_INDEX = 'noindex';
+const REFERRER = 'strict-origin-when-cross-origin';
 
 /**
  * A policy read as what it means rather than as the string it was written as.
@@ -79,6 +79,12 @@ const directivesOf = (policy: string): Readonly<Record<string, readonly string[]
 const sorted = (policy: Readonly<Record<string, readonly string[]>>) =>
   Object.fromEntries(Object.entries(policy).map(([name, sources]) => [name, [...sources].sort()]));
 
+/** The policy as delivered, taken from the markup rather than from a header. */
+const policyIn = (html: string): string =>
+  /<meta http-equiv="Content-Security-Policy" content="([^"]*)"/
+    .exec(html)?.[1]
+    ?.replaceAll('&#x27;', "'") ?? '';
+
 test.describe('the permissions this page publishes', () => {
   for (const target of renderedPages) {
     test(`publishes every directive of its policy on ${target.name}`, async ({ request }) => {
@@ -87,7 +93,7 @@ test.describe('the permissions this page publishes', () => {
         target.status,
       );
 
-      const served = response.headers()['content-security-policy'] ?? '';
+      const served = policyIn(await response.text());
 
       expect(served, 'this address publishes no policy at all').not.toBe('');
       expect(
@@ -96,19 +102,40 @@ test.describe('the permissions this page publishes', () => {
       ).toEqual(sorted(POLICY));
     });
 
-    test(`guards ${target.name} with the headers that go beside the policy`, async ({
+    /**
+     * The property that makes the difference between a policy and a decoration.
+     *
+     * A policy delivered by meta tag governs only what the parser meets after
+     * it. Next controls the order of its own head and puts preloads, stylesheets
+     * and its bootstrap scripts first: measured on a real build the tag landed
+     * at position 15, with seven `<script>` tags already ahead of it. So the
+     * export is rewritten by `scripts/harden-export.ts` to put the policy first,
+     * and this is the check that the rewrite still works after a Next upgrade
+     * changes the markup it matches.
+     */
+    test(`declares its policy before anything it governs on ${target.name}`, async ({
       request,
     }) => {
-      const served = (await request.get(target.path)).headers();
+      const html = await (await request.get(target.path)).text();
+      const head = html.slice(html.indexOf('<head'), html.indexOf('</head>'));
 
-      for (const [header, value] of Object.entries(GUARDS)) {
-        expect(served[header] ?? 'nothing', `${target.path} answers ${header}`).toBe(value);
-      }
+      const policyAt = head.indexOf('<meta http-equiv="Content-Security-Policy"');
+      expect(policyAt, `${target.path} carries no policy in its head`).toBeGreaterThanOrEqual(0);
 
-      // Kept by omission, so no comparison of values can notice it going.
-      expect('x-powered-by' in served, `${target.path} names the framework it was built with`).toBe(
-        false,
+      const governed = [...head.matchAll(/<script|<link[^>]+rel="stylesheet"/g)].map(
+        (match) => match.index,
       );
+      expect(
+        governed.filter((at) => at < policyAt).length,
+        `${target.path} loads scripts or styles before its policy applies to them`,
+      ).toBe(0);
+    });
+
+    test(`states its referrer policy in the markup of ${target.name}`, async ({ request }) => {
+      const html = await (await request.get(target.path)).text();
+      const stated = /<meta name="referrer" content="([^"]*)"/.exec(html)?.[1] ?? 'nothing';
+
+      expect(stated, `${target.path} states no referrer policy`).toBe(REFERRER);
     });
 
     test(`refuses indexing in the markup of ${target.name}`, async ({ page }) => {
@@ -129,20 +156,28 @@ test.describe('the permissions this page publishes', () => {
     });
   }
 
-  test('refuses to be put inside a page belonging to somebody else', async ({ page }) => {
+  /**
+   * Expected to fail, and kept because it is expected to fail.
+   *
+   * A frame is the one permission whose absence is invisible from the outside:
+   * the page looks and behaves exactly the same whether or not someone else is
+   * showing it inside their own, under their own domain and beside their own
+   * claims about it. `frame-ancestors 'none'` is what refused that, and it only
+   * works as a real header — browsers ignore it in a meta tag, so the static
+   * host cannot send it and the page can be framed by anybody.
+   *
+   * Deleting this test would leave nothing anywhere recording that the
+   * protection was lost. Making it pass against current behaviour would assert
+   * that being framed is fine. So it states the intended behaviour and is
+   * marked failing: put Cloudflare in front of the origin and restore the
+   * header, and this turns green and demands the annotation come off.
+   */
+  test.fail('refuses to be put inside a page belonging to somebody else', async ({ page }) => {
     await page.goto('/');
 
-    /*
-      The header text is pinned above; this is the browser being asked to obey
-      it. A frame is the one permission whose absence is invisible from the
-      outside: the page looks and behaves exactly the same whether or not
-      someone else is showing it inside their own, under their own domain and
-      beside their own claims about it.
-
-      `about:blank` is framed first as a control. Without it a page that failed
-      to embed for any other reason - a typo in the address, a server that had
-      stopped answering - would read as a policy being enforced.
-    */
+    // `about:blank` is framed first as a control. Without it a page that
+    // failed to embed for any other reason - a typo in the address, a server
+    // that had stopped answering - would read as a policy being enforced.
     const embedded = await page.evaluate(async () => {
       const embed = async (source: string): Promise<string> => {
         const frame = document.createElement('iframe');
@@ -174,23 +209,26 @@ test.describe('the permissions this page publishes', () => {
     expect(embedded.site, 'this page can be framed by anybody who wants to').toBe('refused');
   });
 
-  test('will not fetch an image for anybody from anywhere but itself', async ({ request }) => {
-    const own = realAsset(SIGNAL_EXPORT).file;
-
-    // The optimiser is a URL anyone can call with a URL of their own. Without
-    // the refusal it becomes a proxy that fetches arbitrary remote images and
-    // serves them from this origin, at this origin's reputation. The address
-    // below is unresolvable on purpose: what is asserted is that the request
-    // is turned away rather than attempted.
-    const foreign = await request.get(
+  /**
+   * The one thing static hosting made strictly better.
+   *
+   * `/_next/image` was a URL anyone could call with a URL of their own, which
+   * without a refusal becomes a proxy fetching arbitrary remote images and
+   * serving them from this origin, at this origin's reputation. Static export
+   * has no optimiser, so the endpoint does not exist and the attack surface is
+   * gone rather than guarded. This asserts it stayed gone: turning image
+   * optimisation back on without a server would reintroduce it.
+   */
+  test('publishes no image optimiser for anyone to point at another origin', async ({
+    request,
+  }) => {
+    const response = await request.get(
       `/_next/image?url=${encodeURIComponent('https://images.example.invalid/anything.png')}&w=640&q=75`,
     );
 
-    expect(foreign.status(), 'the image optimiser will fetch a foreign origin').toBe(400);
-
-    // The control: the same route, asked for something this site does publish.
-    const mine = await request.get(`/_next/image?url=${encodeURIComponent(own)}&w=640&q=75`);
-    expect(mine.status(), 'the optimiser refuses this site its own asset').toBe(200);
+    expect(response.status(), 'an image optimiser answered, so it can be pointed anywhere').toBe(
+      404,
+    );
   });
 
   test('asks the network for nothing but itself', async ({ page, baseURL }) => {

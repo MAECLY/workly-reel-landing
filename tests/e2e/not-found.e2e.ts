@@ -294,7 +294,10 @@ test.describe('an address Phase 0 never published', () => {
     // cause.
     expect(answer.status(), `${missing} is answered as though it existed`).toBe(404);
     expect(answer.headers()['content-type'] ?? '').not.toContain('image/');
-    expect(answer.headers()['x-robots-tag']).toBe('noindex, nofollow');
+
+    // The refusal is in the body rather than in a header: the static host sends
+    // none, and `404.html` carries the same robots tag every document does.
+    expect(await answer.text(), 'the not-found body invites a crawler in').toContain('noindex');
 
     // The control: the file that is published still is.
     expect((await request.get(published)).status()).toBe(200);
