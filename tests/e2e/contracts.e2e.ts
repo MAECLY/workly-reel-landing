@@ -13,7 +13,16 @@ import {
   realAsset,
   site,
 } from '../../content';
-import { loadEveryImage, showTheme, withoutMotion } from './support';
+import {
+  DOCUMENT_STATES,
+  READER_STATES,
+  VIEWPORT_WIDTHS,
+  loadEveryImage,
+  mediaConditionsDeclaredBy,
+  pseudoClassesDeclaredBy,
+  showTheme,
+  withoutMotion,
+} from './support';
 import { renderedPages } from './pages';
 
 /**
@@ -67,6 +76,22 @@ const directive = (robots: string, name: string): string | undefined =>
  * records rather than one it can refuse.
  */
 const ALLOWED_SOURCES = new Set(["'self'", "'none'", "'unsafe-inline'", 'data:']);
+
+/**
+ * Every media feature the shipped stylesheets may ask about, and what answers it.
+ *
+ * Named after the sweep rather than after the feature, because the value of
+ * this map is the sentence it lets the test say: this page is written for these
+ * conditions, and each of them is one something here actually renders the page
+ * in. A feature with no sweep beside it is a rendering nobody has seen.
+ */
+const FEATURES_THE_SUITE_ENTERS: Readonly<Record<string, string>> = {
+  width: 'responsive.e2e.ts, at each of the widths in support.ts',
+  'min-width': 'responsive.e2e.ts, at each of the widths in support.ts',
+  'max-width': 'responsive.e2e.ts, at each of the widths in support.ts',
+  'prefers-reduced-motion': 'motion.e2e.ts, on both sides of the preference',
+  'prefers-color-scheme': 'theme.e2e.ts, on both sides of the preference',
+};
 
 test.describe('the contracts the page publishes', () => {
   /**
@@ -262,6 +287,76 @@ test.describe('the contracts the page publishes', () => {
 
     expect(violations, 'the page asked for something its own policy forbids').toEqual([]);
     expect(failures).toEqual([]);
+  });
+
+  /**
+   * The seam between the stylesheets and the sweeps that read them.
+   *
+   * Every other test in this suite measures the page in some condition. This
+   * one asks the opposite question, which is the one that has been missed five
+   * times running here: are there conditions the page is written for that
+   * nothing measures it in. A rule behind a pseudo-class no driver enters, or a
+   * breakpoint with no viewport on either side of it, is a piece of this page
+   * that ships to readers and has never been looked at by anything.
+   *
+   * Both halves are read out of the shipped stylesheets rather than listed, so
+   * adding `@media (forced-colors: active)` or a `:target` rule turns this red
+   * and asks for a sweep, instead of quietly widening what nobody checks.
+   */
+  test('declares no state and no breakpoint that its own sweeps never enter', async ({ page }) => {
+    await withoutMotion(page);
+    await page.goto('/');
+
+    const declared = await pseudoClassesDeclaredBy(page);
+    const unaccountedFor = declared.filter(
+      (pseudo) => !READER_STATES.includes(pseudo) && !DOCUMENT_STATES.includes(pseudo),
+    );
+
+    expect(
+      unaccountedFor,
+      'a stylesheet declares a pseudo-class that is neither driven as a state nor known to be settled at load',
+    ).toEqual([]);
+    expect(
+      declared.filter((pseudo) => READER_STATES.includes(pseudo)),
+      'nothing on this page reacts to a reader at all, which the design system contradicts',
+    ).not.toEqual([]);
+
+    const conditions = await mediaConditionsDeclaredBy(page);
+    const asked = [
+      ...new Set(
+        conditions.flatMap((condition) =>
+          [...condition.matchAll(/\(\s*([a-z-]+)\s*[:)]/g)].map((match) => match[1] ?? ''),
+        ),
+      ),
+    ];
+
+    expect(
+      asked.filter((feature) => FEATURES_THE_SUITE_ENTERS[feature] === undefined),
+      'a stylesheet asks the reader something no sweep in this suite ever answers',
+    ).toEqual([]);
+
+    // A breakpoint is only exercised if something is measured on each side of
+    // it. `1440px` is the widest one the design system writes, and it would be
+    // invisible with the widest viewport at 1280.
+    const unstraddled = [
+      ...new Set(
+        conditions.flatMap((condition) =>
+          [...condition.matchAll(/\((?:min|max)-width:\s*(\d+)px\)/g)]
+            .map((match) => Number(match[1]))
+            .filter(
+              (breakpoint) =>
+                !VIEWPORT_WIDTHS.some((width) => width < breakpoint) ||
+                !VIEWPORT_WIDTHS.some((width) => width >= breakpoint),
+            )
+            .map((breakpoint) => `${breakpoint}px`),
+        ),
+      ),
+    ];
+
+    expect(
+      unstraddled,
+      'a breakpoint has no viewport measured on one of its two sides, so one of the two layouts it chooses between is never seen',
+    ).toEqual([]);
   });
 
   test('publishes the design system commit the build actually installed', async ({ page }) => {

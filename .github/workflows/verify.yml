@@ -36,6 +36,17 @@ jobs:
       # The one place a missing key is legitimate is a pull request from a fork,
       # where GitHub withholds secrets by design and the contributor could not
       # supply one. That case still skips, and says so.
+      #
+      # The export privacy gate skips with the rest, and that is worth stating
+      # rather than leaving to be inferred, because a redaction gate is the one
+      # that most needs to run on the build nobody is watching. It cannot be
+      # made independent of the key here: it reads `out/`, `out/` comes from a
+      # build, and the build cannot resolve the private design system without
+      # one. So the warning below names it. What does not depend on this branch
+      # is the same check inside `pnpm build`, which means no `out/` can exist
+      # anywhere - on a maintainer's machine or on the deploy in pages.yml -
+      # without having passed it. A fork's run is short the gate, not the
+      # protection.
       - name: Check for design-system access
         id: access
         env:
@@ -46,7 +57,7 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           elif [ "$FROM_FORK" = "true" ]; then
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::A fork cannot be given the design-system key, so the gates below did not run. A maintainer must run them before merging."
+            echo "::warning::A fork cannot be given the design-system key, so the gates below did not run. That includes the export privacy gate, which reads out/ and therefore needs a build. A maintainer must run them before merging."
           else
             echo "::error::No WORKLY_REEL_UI_DEPLOY_KEY is configured, so every gate below would be skipped and this job would report a pass having verified nothing. Add the private half of a read-only deploy key for MAECLY/workly-reel-ui as a repository secret."
             exit 1
@@ -80,6 +91,23 @@ jobs:
         if: steps.access.outputs.available == 'true'
         run: pnpm run content:check
 
+      # Vitest, and it carries one claim that is not about this page at all.
+      #
+      # tests/check-export-privacy.test.ts is mostly the proof that the export
+      # privacy gate can fail: every rule in it is shown catching the thing it
+      # was written for, because a gate that finds nothing in the real out/ is
+      # indistinguishable from a gate that looks at nothing.
+      #
+      # The claim that is not about out/ is the one about building it. Next
+      # collects telemetry by default and posts it during `next build`, so on a
+      # product whose posture is that nothing leaves the machine, every build -
+      # a contributor's, this job's, and the deploy's - reported itself to a
+      # third party. No rule that reads out/ could ever have seen it, because
+      # the request is made by the build tool rather than by the site. The
+      # scripts now set NEXT_TELEMETRY_DISABLED=1 and that suite holds them to
+      # it, asserted against package.json rather than against this runner's
+      # environment: `next telemetry disable` writes to a per-user config
+      # outside the repository, which fixes one machine and no others.
       - name: Tests
         if: steps.access.outputs.available == 'true'
         run: pnpm run test
@@ -87,6 +115,50 @@ jobs:
       - name: Production build
         if: steps.access.outputs.available == 'true'
         run: pnpm run build
+
+      # THE REDACTION GATE, over the bytes that get uploaded rather than the
+      # page that gets rendered. `out/` is published wholesale by
+      # actions/upload-pages-artifact, so a file nothing links to is served as
+      # completely as the home page and a browser would never open it. This
+      # reads every byte of it and refuses a source map, an identity, a
+      # credential, identifying image metadata, a file nobody meant to publish,
+      # and a reference to somewhere that is not this site - then holds
+      # robots.txt, the sitemap, the `noindex`, the position of the security
+      # policy, the preview card and the custom domain to what Phase 0 intends.
+      #
+      # That last refusal is the newest and was the widest hole here. It used to
+      # be asked of `.html` and of nothing else, which left the stylesheets -
+      # the classic place a webfont or a background texture arrives from a CDN -
+      # entirely unread, and a `url()` inside a `:hover` rule doubly so, because
+      # it is in the file type the sweep skipped and in a state no browser in
+      # this suite ever entered. It is now asked of every file the export
+      # contains, whatever its extension. A script is the one exception and is
+      # read for stylesheet fetch syntax alone, because the framework's own
+      # chunks quote a dozen documentation addresses inside the errors they
+      # throw; what a script fetches when it runs is answered by the End to end
+      # step below instead, in every state and across the page's own unloading.
+      #
+      # The image branch is now chosen by the file's eight-byte signature rather
+      # than by its name, which is what a browser does too. Keyed on the
+      # extension, a file *named* `notes.png` that was not a PNG was read for
+      # image metadata, found none because there is none, and was published
+      # without any other rule ever seeing its bytes.
+      #
+      # It is named here even though `pnpm build` already runs it, and the
+      # duplication is the point rather than an oversight. Inside `build` is
+      # where it belongs, because that makes it impossible to produce `out/`
+      # anywhere - here, on the deploy, or on a laptop - without it having
+      # passed. Named here as well, because a step is what a reader of a run
+      # sees, and because the day somebody edits the `build` script this step
+      # still asks the question. Two seconds of file reading buys both.
+      #
+      # A finding names the kind, the file and the position and never the value.
+      # This log is public the moment the repository is, and a message that
+      # quoted the leak would publish it a second time in the course of
+      # reporting it.
+      - name: Export privacy
+        if: steps.access.outputs.available == 'true'
+        run: pnpm run privacy:check
 
       # Both of the following are new gates. `pnpm test:e2e` was declared long
       # before a Playwright config existed and could only ever exit 1, and
@@ -118,24 +190,29 @@ jobs:
         if: steps.access.outputs.available == 'true' && steps.browser.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
-      # Two classes this gate does not catch, named so a green run is not read
-      # as covering them.
+      # One class this gate does not catch, named so a green run is not read as
+      # covering it.
       #
-      # The first is a section heading demoted from h2 to h4 where the heading
-      # immediately before it in document order is an h3. The heading check in
+      # A section heading demoted from h2 to h4 where the heading immediately
+      # before it in document order is an h3. The heading check in
       # tests/e2e/a11y.e2e.ts compares each heading against its predecessor, so
       # that descent is legal to it, and axe reaches the same verdict at
       # moderate impact, below the serious threshold this gate blocks on. A
       # demotion that follows the h1 directly is caught.
       #
-      # The second is axe on any page but the landing one. tests/e2e/pages.ts
-      # now walks app/ and feeds every discovered page to the theme sweep and to
-      # the reduced-motion sweep, which is what closed the animation hole below
-      # — but a11y.e2e.ts still opens `/` and only `/`, so the not-found page is
-      # never analysed. It is the one place a page inventory exists and is not
-      # used, which makes it the easiest thing here to assume is covered.
-      # tests/e2e/not-found.e2e.ts holds that page's markup, its metadata, its
-      # theme, its way out and its three keyboard stops, but it runs no axe.
+      # Axe on any page but the landing one used to be the second entry here.
+      # tests/e2e/a11y.e2e.ts now runs it once per page discovered by
+      # tests/e2e/pages.ts, in both themes, as the theme and reduced-motion
+      # sweeps already did, so the not-found page is analysed rather than
+      # assumed.
+      #
+      # The states a reader reaches used to be a third, unwritten one: every
+      # sweep read the page as it loaded, so a rule behind a `:hover`, a
+      # `:focus` or a `:disabled` was in no measurement anywhere. The theme,
+      # reduced-motion and network sweeps now enter every state the shipped
+      # stylesheets declare, and tests/e2e/contracts.e2e.ts refuses a
+      # pseudo-class or a media condition that none of them enters, so this
+      # cannot quietly become an entry again.
       #
       # An animation declared outside the `prefers-reduced-motion:
       # no-preference` block used to be an entry here twice over, and neither
@@ -147,7 +224,40 @@ jobs:
       # tests/e2e/pages.ts, as tests/e2e/theme.e2e.ts and
       # tests/e2e/headers.e2e.ts also do.
       #
-      # Three specs added since this comment was written run under the same
+      # TWO GATES RUN BY THIS STEP ARE EXPECTED TO FAIL, AND NEITHER IS A FLAKE.
+      # Each states what this site should do rather than what it does, so each
+      # turns green - and turns its spec red - the day its cause is fixed.
+      #
+      # The first is in tests/e2e/headers.e2e.ts: "refuses to be put inside a
+      # page belonging to somebody else". `frame-ancestors` is ignored in a
+      # `<meta http-equiv>` policy by specification and GitHub Pages sends no
+      # configurable header, so the page can be framed by anybody today, under
+      # somebody else's domain and beside their own claims about it. Deleting
+      # the test would leave nothing recording that the protection was lost, and
+      # making it pass against current behaviour would assert that being framed
+      # is fine. What it is waiting for is a response header: `maecly.com`
+      # already resolves through Cloudflare, so proxying the Pages origin and
+      # adding a transform rule restores this and `nosniff` both. That is a
+      # setting rather than a migration.
+      #
+      # The second is in tests/e2e/exported-site.e2e.ts, a `test.fail()` on
+      # "advertises to a link preview the same address it claims as its
+      # canonical". The list
+      # reporter prints it as an expected failure and the run exits 0; that is
+      # what one looks like here. app/layout.tsx sets openGraph.url to
+      # site.canonical and tests/metadata.test.ts agrees that it does, and both
+      # are true of the metadata object - but Next normalises a metadata URL by
+      # dropping the trailing slash, so every exported document advertises
+      # https://workly-reel.maecly.com to a link preview while the canonical link
+      # a few tags later claims https://workly-reel.maecly.com/. One page,
+      # two identities, told to two different readers. The assertion is written
+      # for the address the site says is its own, so it turns red the day og:url
+      # carries the slash and the annotation comes off; writing it the other way
+      # round would have recorded the drift as the agreement. Do not delete it
+      # and do not relax it. The privacy gate holds the weaker claim that
+      # survives being a build gate: og:url must at least be at this origin.
+      #
+      # Four specs added since this comment was written run under the same
       # command and need no step of their own. tests/e2e/not-found.e2e.ts holds
       # the route that answers when something is wrong — a real 404 status
       # rather than an apology served as a page, arriving already in its theme,
@@ -159,7 +269,12 @@ jobs:
       # "no" to: the usual reply to an unwanted scrollbar cut a hundred pixels
       # off the specification table at 390 while keyboard.e2e.ts and
       # responsive.e2e.ts both stayed green, because they asked which regions
-      # *declare* that they scroll.
+      # *declare* that they scroll. tests/e2e/exported-site.e2e.ts is the fourth
+      # and runs the whole export privacy gate a third time — the first is
+      # inside `pnpm build`, the second is the step above — because this is the
+      # run that puts the answer in a test report the workflow keeps as an
+      # artefact rather than in a build log that scrolls past. It is also where
+      # the expected failure above lives.
       #
       # This step also owns the one set of claims that are not about rendering
       # at all. tests/e2e/contracts.e2e.ts holds the documents this page

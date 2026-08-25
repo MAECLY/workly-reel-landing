@@ -5,8 +5,8 @@
   "type": "module",
   "description": "WorklyReel by MAECLY Phase 0 landing page.",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build && tsx scripts/harden-export.ts",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build && tsx scripts/harden-export.ts && tsx scripts/check-export-privacy.ts",
     "start": "tsx scripts/serve-export.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -15,8 +15,9 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "content:check": "tsx scripts/check-content.ts",
+    "privacy:check": "tsx scripts/check-export-privacy.ts",
     "smoke": "tsx scripts/smoke.ts",
-    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run content:check && pnpm run test && pnpm run build && pnpm run smoke && CI=1 pnpm run test:e2e"
+    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run content:check && pnpm run test && pnpm run build && pnpm run privacy:check && pnpm run smoke && CI=1 pnpm run test:e2e"
   },
   "dependencies": {
     "@maecly/workly-reel-ui": "git+ssh://git@github.com/MAECLY/workly-reel-ui.git#837a08bdb4c1a84f4002cd3f38a9e28069965ab2",

@@ -1,7 +1,16 @@
 import { expect, test } from '@playwright/test';
 
-import { renderedPages } from './pages';
-import { loadEveryImage, withoutMotion } from './support';
+import { hero } from '../../content';
+import { UNPUBLISHED_ADDRESS, renderedPages } from './pages';
+import {
+  leaveThePage,
+  loadEveryImage,
+  settle,
+  showTheme,
+  stateDriver,
+  throughEveryRegisteredEvent,
+  withoutMotion,
+} from './support';
 
 /**
  * What this page is allowed to be, and what it is allowed to reach.
@@ -231,7 +240,38 @@ test.describe('the permissions this page publishes', () => {
     );
   });
 
-  test('asks the network for nothing but itself', async ({ page, baseURL }) => {
+  /**
+   * Everything this page asks the network for, in every condition it is read in.
+   *
+   * This used to open the page, scroll it, and read the recording while the
+   * document was still on the screen, which meant it could only ever see the
+   * requests a page makes on arrival. Two shapes walked past it, and both are
+   * ordinary rather than exotic:
+   *
+   * - A texture, a webfont or a tracking pixel behind a `:hover`, a `:focus` or
+   *   a `:disabled` rule. Nothing here ever put an element into a state, so the
+   *   request was never made while anything was watching.
+   * - A beacon on the way out. `navigator.sendBeacon` inside a `pagehide` or
+   *   `visibilitychange` handler is the single commonest analytics shape there
+   *   is, and it fires after every measurement this file used to take.
+   *
+   * Both are driven now, and both windows onto the answer are kept, because
+   * neither is enough on its own: a request the policy refuses never reaches the
+   * network and so never raises a `request` event, and a request the policy
+   * allows never reaches the console. The policy is the reason this page is
+   * quiet today, and a gate that only watched the network would go green the day
+   * the policy is relaxed to admit one origin.
+   *
+   * The way out is measured rather than assumed. Chromium reports neither the
+   * request nor the console message once the document that made them is gone, so
+   * firing the events into the living document is the only way the answer
+   * survives to be read; a real navigation is done as well, and the events fired
+   * are the ones the document has actually registered a listener for.
+   */
+  test('asks the network for nothing but itself, in every state and on its way out', async ({
+    page,
+    baseURL,
+  }) => {
     const foreign: string[] = [];
 
     page.on('request', (request) => {
@@ -241,10 +281,39 @@ test.describe('the permissions this page publishes', () => {
       }
     });
 
+    page.on('console', (message) => {
+      if (message.type() === 'error' && /Content Security Policy/i.test(message.text())) {
+        foreign.push(`refused by this page's own policy: ${message.text()}`);
+      }
+    });
+
     await withoutMotion(page);
     await page.goto('/');
     // Everything the page fetches, it fetches while being read.
     await loadEveryImage(page);
+
+    const states = await stateDriver(page);
+    for (const state of states.reachable) {
+      await states.enter(state);
+      await settle(page);
+      await states.leave();
+    }
+
+    // The controls, operated, because a handler can fetch as readily as a rule.
+    await showTheme(page, 'light');
+    await page.getByRole('link', { name: hero.primaryAction.label }).click();
+    await settle(page);
+
+    const fired = await throughEveryRegisteredEvent(page);
+    await settle(page);
+    await leaveThePage(page, `/${UNPUBLISHED_ADDRESS}`);
+
+    // A driver that drove nothing would make everything below vacuous, and this
+    // test would then pass on a page that had stopped declaring states or
+    // listening for anything at all.
+    expect(states.reachable, 'the stylesheets declare no state a reader can reach').not.toEqual([]);
+    expect(states.elements, 'the state driver found no elements to drive').toBeGreaterThan(0);
+    expect(fired, 'this document has registered no event listener at all').not.toEqual([]);
 
     expect(foreign, 'the page reached for something that is not this site').toEqual([]);
   });

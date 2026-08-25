@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 import { renderedPages } from './pages';
-import { settle, showTheme, withoutMotion } from './support';
+import { settle, showTheme, stateDriver, withoutMotion } from './support';
 
 /**
  * The theme control, as a reader meets it.
@@ -60,6 +60,9 @@ interface Paint {
    * them by position in a list would pair the wrong elements the moment the
    * document grows one. A path pairs an element with itself, and reads well
    * enough in a failure to find the surface in the markup.
+   *
+   * A generated box carries the same path with `::before` or `::after` on the
+   * end, because it is a surface of its own with colours of its own.
    */
   readonly path: string;
   readonly name: string;
@@ -88,10 +91,18 @@ const CHANNELS = ['background', 'backgroundImage', 'text', 'border'] as const;
  * stayed dark in the light theme with this file green. Adding `.lp-panel`
  * would only have moved the hole to whatever was added next, so nothing is
  * named here at all and the document decides what is examined.
+ *
+ * The generated boxes are swept beside the elements that own them. A `::before`
+ * is a surface a reader looks at and paints its own background, its own text
+ * and its own border, and the landing layer draws several of its rules with
+ * one; a sweep of elements alone would call each of them a colour that is not
+ * there. A box whose `content` is `none` is not generated at all and is left
+ * out rather than compared against nothing.
  */
 const paintOf = (page: Page): Promise<readonly Paint[]> =>
   page.evaluate(() => {
     const sides = ['top', 'right', 'bottom', 'left'] as const;
+    const boxes = [null, '::before', '::after'] as const;
 
     const pathOf = (node: Element): string => {
       const steps: string[] = [];
@@ -116,24 +127,32 @@ const paintOf = (page: Page): Promise<readonly Paint[]> =>
       return `${node.tagName.toLowerCase()}${classes === '' ? '' : `.${classes.split(/\s+/).join('.')}`}`;
     };
 
-    return Array.from(document.querySelectorAll('*')).map((node) => {
-      const style = window.getComputedStyle(node);
-      const drawn = sides.find(
-        (side) => Number.parseFloat(style.getPropertyValue(`border-${side}-width`)) > 0,
-      );
+    return Array.from(document.querySelectorAll('*')).flatMap((node) =>
+      boxes.flatMap((box): Paint[] => {
+        const style = window.getComputedStyle(node, box);
+        if (box !== null && style.content === 'none') {
+          return [];
+        }
 
-      return {
-        path: pathOf(node),
-        name: nameOf(node),
-        background: style.backgroundColor,
-        backgroundImage: style.backgroundImage,
-        text: style.color,
-        border:
-          drawn === undefined
-            ? 'rgba(0, 0, 0, 0)'
-            : style.getPropertyValue(`border-${drawn}-color`),
-      };
-    });
+        const drawn = sides.find(
+          (side) => Number.parseFloat(style.getPropertyValue(`border-${side}-width`)) > 0,
+        );
+
+        return [
+          {
+            path: `${pathOf(node)}${box ?? ''}`,
+            name: `${nameOf(node)}${box ?? ''}`,
+            background: style.backgroundColor,
+            backgroundImage: style.backgroundImage,
+            text: style.color,
+            border:
+              drawn === undefined
+                ? 'rgba(0, 0, 0, 0)'
+                : style.getPropertyValue(`border-${drawn}-color`),
+          },
+        ];
+      }),
+    );
   });
 
 /** Set or clear the shared tokens on the root, where the themes declare them. */
@@ -335,6 +354,92 @@ for (const target of renderedPages) {
           message: 'switching back left the page in a third state',
         })
         .toEqual([]);
+    });
+
+    /**
+     * The same question, asked of every state a reader can put the page into.
+     *
+     * The sweep above reads the page as it loads. Every control on it also has
+     * a hover fill, a focus ring and a pressed colour, and the landing layer
+     * adds a `:hover` border of its own, so a good part of what a reader
+     * actually looks at is painted by a rule the sweep never reached. A hover
+     * fill hardcoded to a dark grey would leave every control on the page dark
+     * in the light theme under the pointer, and every test in this file green.
+     *
+     * The states are read out of the shipped stylesheets, so a rule written
+     * against a state nobody has used here yet is covered from the moment it
+     * exists. Each state is compared against itself across the toggle - the
+     * dark hover against the light hover - because a state has its own two
+     * colours exactly as the resting surface does.
+     */
+    test('repaints in every state a reader can put it into', async ({ page }) => {
+      const states = await stateDriver(page);
+
+      // A sweep of no states passes on anything at all, and this page is built
+      // out of a design system whose every control reacts to a pointer.
+      expect(states.reachable, 'the stylesheets declare no state a reader can reach').not.toEqual(
+        [],
+      );
+
+      const dark = new Map<string, readonly Paint[]>();
+      const fedByShared = new Map<string, ReadonlySet<string>>();
+
+      for (const state of states.reachable) {
+        await states.enter(state);
+        await settle(page);
+        dark.set(state, await paintOf(page));
+        fedByShared.set(state, await pairsFedByShared(page));
+        await states.leave();
+      }
+
+      await switchTo(page, 'light');
+      await settle(page);
+
+      const stuck: string[] = [];
+      for (const state of states.reachable) {
+        await states.enter(state);
+        await settle(page);
+        stuck.push(
+          ...coloursThatDidNotChange(
+            dark.get(state) ?? [],
+            await paintOf(page),
+            fedByShared.get(state) ?? new Set(),
+          ).map((one) => `with :${state} applied, ${one}`),
+        );
+        await states.leave();
+      }
+
+      expect(stuck, 'a surface kept its dark colours in a state a reader can reach').toEqual([]);
+    });
+
+    /**
+     * Which of the two themes the page is in is the attribute's business alone.
+     *
+     * The design system's token document carries a
+     * `@media (prefers-color-scheme: dark)` block, so the reader's system has an
+     * opinion about this page whether or not anything here asked for one. It is
+     * written to defer - the block is scoped to a root that carries no theme
+     * attribute - and this page always carries one, so the two must agree.
+     *
+     * Nothing measured that. Playwright emulates the light preference by
+     * default, so every other test in this suite runs on one side of that block
+     * and no test in this suite has ever run on the other. A reader whose system
+     * is set to dark is most of the readers this page will have.
+     */
+    test('paints from its own attribute rather than from the reader’s system preference', async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+      await settle(page);
+      const preferringLight = await paintOf(page);
+
+      await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+      await settle(page);
+
+      expect(
+        coloursThatChanged(preferringLight, await paintOf(page)),
+        'the reader’s system preference repainted a page that had already chosen its theme',
+      ).toEqual([]);
     });
 
     test('is operable from the keyboard and says what it will do next', async ({ page }) => {

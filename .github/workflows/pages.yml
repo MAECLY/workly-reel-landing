@@ -55,6 +55,27 @@ jobs:
       - name: Export
         run: pnpm build
 
+      # THE REDACTION GATE, on the one path where the bytes actually become
+      # public. Everything below this line hands `out/` to Pages, and Pages
+      # serves all of it: a file nothing links to is published as completely as
+      # the home page, and no browser and no reviewer would ever open it. So the
+      # last thing that happens before the artefact is built is that every byte
+      # of it is read and refused a source map, an identity, a credential,
+      # identifying image metadata, and a file nobody meant to publish.
+      #
+      # It has no `if:` and it never will. `pnpm build` above runs the same
+      # check, which is what makes it impossible to produce `out/` without it
+      # passing, and this step is here so the deploy asks again in its own
+      # right: a gate that only ever ran as a side effect of another script is
+      # one edit away from not running at all, and this is the run where that
+      # would matter most, because nobody is watching a push to main the way
+      # they watch a pull request.
+      #
+      # A finding names the kind, the file and the position and never the value.
+      # This log is public the moment the repository is.
+      - name: Export privacy
+        run: pnpm privacy:check
+
       # The published bytes are the tested bytes: this is the same check the
       # verify chain runs, against the same `out/`.
       - name: Smoke
