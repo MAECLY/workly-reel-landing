@@ -229,21 +229,41 @@ viewport. WebKit is not installed and is not used. The specs live in
 `tests/e2e/` behind a `.e2e.ts` suffix, so neither runner can pick up the
 other's files.
 
+**`pnpm verify` runs this step as `CI=1 pnpm test:e2e`, and running it by hand
+is worth doing the same way.** Server reuse is the reason: with anything already
+listening on 3210, `pnpm build` never runs and the suite reports on whatever
+that server was built from. A deliberately broken `alt` attribute was measured
+passing 10 of 10 accessibility tests against a stale server while the source on
+disk was already wrong.
+
 | Spec                          | Covers                                                                                                                                                                                                                                                                |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/e2e/page.e2e.ts`       | 200 from `next start`, the five sections and the run block by their real ids, every workflow stage anchored, the primary action scrolling the run instructions into view and moving focus with it, and every manifest image decoding at the size the manifest records |
 | `tests/e2e/metadata.e2e.ts`   | The canonical with its trailing slash, `noindex, nofollow` in the meta tag and in the `X-Robots-Tag` header, the Open Graph image resolving to the real export byte for byte, and `/sitemap.xml` and `/robots.txt` rooted at the agreed origin                        |
 | `tests/e2e/responsive.e2e.ts` | At 390, 768, 1280, and 1680: no horizontal scroll, no element past the viewport, the headline in four lines or fewer, and every interactive target at least 24 by 24                                                                                                  |
 | `tests/e2e/a11y.e2e.ts`       | axe-core reporting nothing serious or critical in either theme, one `h1`, no skipped heading level, a skip link that moves the tab sequence into `<main>`, and a non-empty `alt` on every image                                                                       |
+| `tests/e2e/keyboard.e2e.ts`   | The whole tab sequence walked forwards and back, in the order the markup declares it, with the design system's focus ring painted on every stop and both sideways-scrolling registers reachable                                                                       |
+| `tests/e2e/motion.e2e.ts`     | Both sides of `prefers-reduced-motion`: nothing left animating and an instant jump to the run block under `reduce`, against a page that genuinely rises, reveals, and glides under `no-preference`                                                                    |
+| `tests/e2e/no-script.e2e.ts`  | The page with scripting off: the copy, the sections, and the theme arrive in the first response, the in-page actions are followed by the browser alone, and nothing stays hidden waiting for an observer                                                              |
+| `tests/e2e/theme.e2e.ts`      | The toggle repainting real surfaces rather than only rewriting `data-theme`, restoring every one of them on the way back, and saying from the keyboard what pressing it will do next                                                                                  |
 
 Every expectation is read from `content/` and `public/assets/manifest.json`, so
 renaming a section or replacing an asset fails the suite rather than leaving it
 asserting a string nobody updated.
 
-The specs ask for `prefers-reduced-motion: reduce` before measuring anything.
+Most specs ask for `prefers-reduced-motion: reduce` before measuring anything.
 The page reveals its sections on a timer and on a scroll timeline, and a colour
 sampled halfway through that fade is one no reader ever sees; axe reported a
-different contrast ratio on every run until this was settled.
+different contrast ratio on every run until this was settled. `motion.e2e.ts` is
+the exception, and has to be: it is the only spec that asks for motion, because
+the reduced rendering means nothing unless the page it is compared against is
+really moving.
+
+One class of defect passes this suite, confirmed by planting it and watching all
+90 tests stay green: an animation declared on any class other than `.lp-rise` or
+`.lp-reveal`. Those two are the whole of what `motion.e2e.ts` samples, so a new
+animation written outside the `prefers-reduced-motion: no-preference` block in
+`app/landing.css` ships unguarded with this gate green.
 
 ### Smoke
 
