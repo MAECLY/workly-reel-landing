@@ -58,6 +58,38 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { readonly children: ReactNode }) {
   return (
     <html lang={site.locale} data-theme="dark">
+      <head>
+        {/*
+          The policy is written here, and not in `next.config.ts`, because this
+          site is exported as static files and served by GitHub Pages, which has
+          no way to send a response header. `next.config.ts` records the whole
+          trade.
+
+          Written into `<head>` directly rather than left to React's hoisting: a
+          policy delivered by meta tag governs only what follows it, so its
+          position in the document is part of whether it works at all.
+
+          `frame-ancestors` is deliberately absent. Browsers ignore it in a meta
+          tag by specification, so listing it would read as protection that is
+          not there. Framing is therefore unrestricted on the static host, and
+          `tests/e2e/headers.e2e.ts` records that rather than asserting away.
+        */}
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content={[
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "font-src 'self' data:",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'none'",
+          ].join('; ')}
+        />
+        <meta name="referrer" content="strict-origin-when-cross-origin" />
+      </head>
       <body>
         {/*
           Written here rather than through `alternates.canonical` because Next
