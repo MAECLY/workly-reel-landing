@@ -239,21 +239,21 @@ that server was built from. A deliberately broken `alt` attribute was measured
 passing 10 of 10 accessibility tests against a stale server while the source on
 disk was already wrong.
 
-| Spec                             | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tests/e2e/page.e2e.ts`          | 200 from `next start`, the five sections and the run block by their real ids, every workflow stage anchored, the primary action scrolling the run instructions into view and moving focus with it, and every manifest image decoding at the size the manifest records                                                                                                                                                                                                                                                                                        |
-| `tests/e2e/metadata.e2e.ts`      | The canonical with its trailing slash, `noindex, nofollow` in the meta tag and in the `X-Robots-Tag` header, the Open Graph image resolving to the real export byte for byte, and `/sitemap.xml` and `/robots.txt` rooted at the agreed origin                                                                                                                                                                                                                                                                                                               |
-| `tests/e2e/responsive.e2e.ts`    | At 390, 768, 1280, and 1680: no horizontal scroll, no element past the viewport, the headline in four lines or fewer, and every interactive target at least 24 by 24                                                                                                                                                                                                                                                                                                                                                                                         |
-| `tests/e2e/a11y.e2e.ts`          | axe-core reporting nothing serious or critical in either theme, one `h1`, no skipped heading level, a skip link that moves the tab sequence into `<main>`, and a non-empty `alt` on every image                                                                                                                                                                                                                                                                                                                                                              |
-| `tests/e2e/keyboard.e2e.ts`      | A declared inventory of every control the page owes a keyboard, each one present and rendered, then the whole tab sequence walked forwards and back against that inventory, with the design system's focus ring painted on every stop and both sideways-scrolling registers reachable                                                                                                                                                                                                                                                                        |
-| `tests/e2e/motion.e2e.ts`        | Both sides of `prefers-reduced-motion`: every element and both of its generated boxes swept for a declared or running animation under `reduce`, on every page the router renders, and an instant jump to the run block, against a page that genuinely rises, reveals, and glides under `no-preference`                                                                                                                                                                                                                                                       |
-| `tests/e2e/no-script.e2e.ts`     | The page with scripting off: the copy, the sections, and the theme arrive in the first response, the in-page actions are followed by the browser alone, and nothing stays hidden waiting for an observer                                                                                                                                                                                                                                                                                                                                                     |
-| `tests/e2e/theme.e2e.ts`         | Every colour the page paints, swept from the document rather than from a list of surfaces, on every page the router renders: background colours and background images both, each repainting on the toggle unless a shared token is what feeds it, and each coming back on the way home                                                                                                                                                                                                                                                                       |
-| `tests/e2e/contracts.e2e.ts`     | The seams between the documents this page publishes: the headers `next.config.ts` promises reaching every surface including the image optimiser and an unpublished address, a policy naming no origin but this one and no request breaking it, the sitemap advertising only addresses that answer and claim that canonical, the robots file pointing at a sitemap that is really served, a 404 that is a 404, the post copy quoted exactly as the export wrote it, and the design system commit the footer publishes matching the one the lockfile installed |
-| `tests/e2e/not-found.e2e.ts`     | The route that answers when something is wrong: a real 404 rather than an apology served as a page, already in its theme, publishing everything about itself the landing page does, one way out that reaches a page that answers, three controls a keyboard reaches in order with a focus ring on each, a file the site does not have refused rather than served as HTML, and a fragment naming nothing - stale, mangled, or shaped like markup - leaving the page working                                                                                   |
-| `tests/e2e/headers.e2e.ts`       | The permissions, pinned rather than derived: every directive of the policy written out and compared with the served one on every page, the guards beside it and the absent `X-Powered-By`, a `noindex` in the markup of every page, the refusal to be framed asked of the browser rather than of the header, the image optimiser refusing a foreign origin, and no request leaving this origin                                                                                                                                                               |
-| `tests/e2e/overflow.e2e.ts`      | Every region on every page that clips content wider than itself, at a phone width: user-scrollable rather than merely hidden, able to travel the whole distance it is hiding, and reachable by a keyboard                                                                                                                                                                                                                                                                                                                                                    |
-| `tests/e2e/exported-site.e2e.ts` | The bytes that get uploaded rather than the page that gets rendered: the whole export privacy gate run over `out/`, and the address the preview card claims for this page. The second of those is red on purpose, see below                                                                                                                                                                                                                                                                                                                                  |
+| Spec                             | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/e2e/page.e2e.ts`          | 200 from `next start`, the five sections and the run block by their real ids, every workflow stage anchored, the primary action scrolling the run instructions into view and moving focus with it, and every manifest image decoding at the size the manifest records                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `tests/e2e/metadata.e2e.ts`      | The canonical with its trailing slash, `noindex, nofollow` in the meta tag and in the `X-Robots-Tag` header, the Open Graph image resolving to the real export byte for byte, and `/sitemap.xml` and `/robots.txt` rooted at the agreed origin                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `tests/e2e/responsive.e2e.ts`    | At 390, 768, 1280, and 1680: no horizontal scroll, no element past the viewport, the headline in four lines or fewer, and every interactive target at least 24 by 24                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `tests/e2e/a11y.e2e.ts`          | axe-core reporting nothing serious or critical in either theme, on every page the router renders, plus one `h1`, no skipped heading level, a skip link that moves the tab sequence into `<main>`, and a non-empty `alt` on every image                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `tests/e2e/keyboard.e2e.ts`      | A declared inventory of every control the page owes a keyboard, each one present and rendered, then the whole tab sequence walked forwards and back against that inventory, with the design system's focus ring painted on every stop and both sideways-scrolling registers reachable                                                                                                                                                                                                                                                                                                                                                                                        |
+| `tests/e2e/motion.e2e.ts`        | Both sides of `prefers-reduced-motion`: every element and both of its generated boxes swept for a declared or running animation under `reduce`, on every page the router renders and in every state the shipped stylesheets declare a rule for, and an instant jump to the run block, against a page that genuinely rises, reveals, and glides under `no-preference`                                                                                                                                                                                                                                                                                                         |
+| `tests/e2e/no-script.e2e.ts`     | The page with scripting off: the copy, the sections, and the theme arrive in the first response, the in-page actions are followed by the browser alone, and nothing stays hidden waiting for an observer                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `tests/e2e/theme.e2e.ts`         | Every colour the page paints, swept from the document rather than from a list of surfaces, on every page the router renders, in every state a reader can reach and on the generated boxes as well as the elements: background colours and background images both, each repainting on the toggle unless a shared token is what feeds it, each coming back on the way home, and the whole page indifferent to the reader's system colour scheme because its own attribute has already decided                                                                                                                                                                                  |
+| `tests/e2e/contracts.e2e.ts`     | The seams between the documents this page publishes: the headers `next.config.ts` promises reaching every surface including the image optimiser and an unpublished address, a policy naming no origin but this one and no request breaking it, the sitemap advertising only addresses that answer and claim that canonical, the robots file pointing at a sitemap that is really served, a 404 that is a 404, the post copy quoted exactly as the export wrote it, the design system commit the footer publishes matching the one the lockfile installed, and no pseudo-class or media condition declared in the shipped stylesheets that no sweep in this suite ever enters |
+| `tests/e2e/not-found.e2e.ts`     | The route that answers when something is wrong: a real 404 rather than an apology served as a page, already in its theme, publishing everything about itself the landing page does, one way out that reaches a page that answers, three controls a keyboard reaches in order with a focus ring on each, a file the site does not have refused rather than served as HTML, and a fragment naming nothing - stale, mangled, or shaped like markup - leaving the page working                                                                                                                                                                                                   |
+| `tests/e2e/headers.e2e.ts`       | The permissions, pinned rather than derived: every directive of the policy written out and compared with the served one on every page, the guards beside it and the absent `X-Powered-By`, a `noindex` in the markup of every page, the refusal to be framed asked of the browser rather than of the header, the image optimiser refusing a foreign origin, and no request leaving this origin - watched on the network and on the console, with every state entered, every registered lifecycle event fired, and the page then left                                                                                                                                         |
+| `tests/e2e/overflow.e2e.ts`      | Every region on every page that clips content wider than itself, at a phone width: user-scrollable rather than merely hidden, able to travel the whole distance it is hiding, and reachable by a keyboard                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `tests/e2e/exported-site.e2e.ts` | The bytes that get uploaded rather than the page that gets rendered: the whole export privacy gate run over `out/`, a leak planted under every file extension the export actually contains so that no kind of file is walked past, and the address the preview card claims for this page. The last of those is red on purpose, see below                                                                                                                                                                                                                                                                                                                                     |
 
 Every expectation is read from `content/` and `public/assets/manifest.json`, so
 renaming a section or replacing an asset fails the suite rather than leaving it
@@ -294,6 +294,7 @@ happens to hold, and the sweep excused it for that resemblance. The sweep now
 reads both halves of a background, and asks which surfaces a token actually
 feeds by overriding the tokens and watching what moves, so a colour is excused
 for where it comes from rather than for what it looks like.
+
 `frame-ancestors 'none'` was deleted from the policy and the header check, which
 reads `next.config.ts`, lost the expectation with the promise; `headers.e2e.ts`
 now writes every directive out and asks the browser to try framing the page. An
@@ -306,6 +307,23 @@ box stayed exactly where it was, in the viewport, focused, and invisible.
 `a11y.e2e.ts` now hit-tests the link and compares what is painted where it sits
 before and after it takes focus, which no hiding technique survives.
 
+Four more were planted after that, and each was a sweep reading the right thing
+in the wrong condition, or reading the file types its author had in mind. A
+webfont pulled in with `@import` from a stylesheet, and a remote texture in a
+`:hover` rule, were both invisible: the export privacy gate asked "does this
+reach another origin" of `.html` and of nothing else, so the stylesheets - the
+classic place a font CDN arrives - were never read for it, and no browser in
+this suite had ever entered a state. That question is now asked of every file in
+the export, whatever its extension, and `exported-site.e2e.ts` plants a leak
+under each extension the export really contains so that no kind of file can be
+walked past. A `navigator.sendBeacon` in a `pagehide` handler was invisible too,
+because the network recording was read while the page was still open; it is now
+read after every registered lifecycle event has been fired and the page has been
+left, and it watches the console as well as the network, because a request the
+policy refuses never becomes a request. A file named `notes.png` that was not a
+PNG was published entirely unread, because the image branch was keyed on the
+extension rather than on the signature.
+
 What still passes, so a green run is not read as covering it: a section heading
 demoted from `h2` to `h4` where the heading before it is an `h3`, which
 `a11y.e2e.ts` and axe both consider legal enough not to block on. And the header
@@ -316,12 +334,20 @@ literally, `headers.e2e.ts`, which pins every directive of the policy and tries
 to frame the page, and the policy check, which refuses any origin but this one
 however the config is written.
 
-One more, and it is the one this work made easiest to assume away: axe still
-runs on the landing page and nowhere else. `pages.ts` walks `app/` and feeds
-every page it finds to the theme sweep and the reduced-motion sweep, but
-`a11y.e2e.ts` opens `/` and only `/`, so the not-found page is never analysed.
-`not-found.e2e.ts` holds that page's markup, metadata, theme, way out and three
-keyboard stops, and runs no axe at all.
+Axe running on the landing page and nowhere else used to be listed here. It now
+runs once per page `pages.ts` discovers, in both themes, and it settles the page
+first: measured, three runs in six on the not-found page reported the footer pins
+at a contrast of 2.06, painted a colour half way through the theme transition
+that no reader ever sees.
+
+What replaces it as the thing worth naming is a limit rather than an omission.
+A script is read by the export privacy gate for stylesheet syntax only, because
+the framework's own chunks quote a dozen documentation addresses inside the
+errors they throw and a gate that called those leaks would be removed within a
+week. What a script fetches when it runs is answered in a browser instead, by
+`headers.e2e.ts`, in every state and across the page's own unloading - and that
+answer, unlike a sweep of bytes, is only as complete as the states and events
+the page has been put through.
 
 ### Smoke
 
@@ -396,15 +422,34 @@ pnpm privacy:check      # or let pnpm build run it, which it does
 
 `out/` is uploaded wholesale, so a file nothing links to is published as
 completely as the home page. `scripts/check-export-privacy.ts` reads every byte
-of it after each build and refuses five things:
+of it after each build and refuses six things:
 
-| Refused                        | Because                                                                    |
-| ------------------------------ | -------------------------------------------------------------------------- |
-| A source map, or a link to one | See below                                                                  |
-| An identity                    | An absolute path, a home directory, an account or machine name, an address |
-| A credential                   | Nothing here needs one, so the day one appears nobody will be looking      |
-| Identifying image metadata     | A screenshot carries whatever the capture tool wrote into its EXIF and XMP |
-| A file nobody meant to publish | See below                                                                  |
+| Refused                        | Because                                                                                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| A source map, or a link to one | See below                                                                                                                                |
+| An identity                    | An absolute path, a home directory, an account or machine name, an address                                                               |
+| A credential                   | Nothing here needs one, so the day one appears nobody will be looking                                                                    |
+| Identifying image metadata     | A screenshot carries whatever the capture tool wrote into its EXIF and XMP                                                               |
+| A file nobody meant to publish | See below                                                                                                                                |
+| A reference to somewhere else  | Phase 0 fetches nothing it does not ship, and the moment it does, the reader's browser tells a third party who is reading and from where |
+
+The last of those is the newest and was the widest hole in this gate. It used to
+be asked of `.html` and of nothing else, which left the stylesheets — the
+classic place a webfont or a background texture arrives from a CDN — entirely
+unread, and a `url()` inside a `:hover` rule doubly so, because it is in the
+file type the sweep skipped and in a state no browser in this suite ever
+entered. It is now asked of every file the export contains, whatever its
+extension, which is the only form of the question a file type nobody has thought
+of yet cannot walk past. A script is the one exception and is read for
+stylesheet fetch syntax alone: the framework's own chunks quote a dozen
+documentation addresses inside the errors they throw, and a gate that called
+those leaks would be removed within a week. What a script fetches when it runs
+is answered in a browser instead, by `tests/e2e/headers.e2e.ts`.
+
+The image branch is chosen by the file's eight-byte signature rather than by its
+name, which is what a browser does too. Keyed on the extension, a file _named_
+`notes.png` that was not a PNG was read for image metadata, found none because
+there is none, and was published without any other rule ever seeing its bytes.
 
 It then holds the documents the site publishes about itself to what Phase 0
 intends: `Disallow: /` written under the group that binds every crawler and no
@@ -465,6 +510,26 @@ rule is therefore the name rather than the contents, and the honest answer to
 finding one of these in the export is to fail the build rather than to read it
 and decide.
 
+### What the build itself sends
+
+The gate above answers "what does the published site send". It is not the answer
+to "what does building the published site send", and until now nothing was.
+
+Next.js collects telemetry by default and posts it during `next build`. On a
+product whose stated posture is that nothing leaves the machine, that meant
+every build — on a contributor's laptop, in Verify, and on the deploy — reported
+itself to a third party, and no rule in `scripts/check-export-privacy.ts`, no
+assertion in the browser suite and no reading of `out/` could ever have noticed,
+because the request is made by the build tool rather than by the site.
+
+`pnpm dev` and `pnpm build` now set `NEXT_TELEMETRY_DISABLED=1`, and
+`tests/check-export-privacy.test.ts` holds them to it. The claim is written
+against `package.json` rather than against the current environment on purpose:
+`next telemetry disable` writes to a per-user config outside this repository, so
+it fixes one machine and no others, while the scripts are what every machine
+runs. The rule enumerates — any script whose command invokes `next` has to carry
+the variable — so a script added later is covered by being written.
+
 ### One published contract is wrong, and its gate is red rather than rewritten
 
 **This page claims two different addresses as its own.** `app/layout.tsx` sets
@@ -484,6 +549,138 @@ site says is its own and marked `test.fail()`, so it turns green the day
 Writing it the other way round would have recorded the drift as the agreement.
 `scripts/check-export-privacy.ts` holds the weaker claim that survives being a
 build gate: `og:url` must at least be at this origin.
+
+## What the gates cover, and what they do not
+
+Six phases of work have produced a lot of green ticks. This section exists so a
+reader can tell what those ticks are worth, in terms of the kind of defect that
+would reach a visitor to this site unnoticed. It is written for somebody
+deciding whether a change is safe, not for somebody counting test files.
+
+### The questions this site's gates actually answer
+
+**Is the published byte the tested byte?** Every end-to-end spec runs against a
+freshly built `out/`, served by `scripts/serve-export.ts`, rather than against a
+dev server. That distinction was measured rather than assumed: a deliberately
+broken `alt` attribute passed 10 of 10 accessibility tests against a stale
+server while the source on disk was already wrong.
+
+**Does the export say anything about the machine or the person that built it?**
+`scripts/check-export-privacy.ts` reads every byte of `out/`, and it is asked
+four times — inside `pnpm build`, as a step in Verify, as a step in the deploy,
+and from a test — precisely so no single edit can remove it.
+
+**Does the site publish what it claims about itself?** The canonical, the
+preview card, `robots.txt`, the sitemap, the `noindex`, the position of the
+security policy and the custom domain are all held against the exported files
+and against a running server.
+
+**Does it work for a reader who is not the author?** axe on every page in both
+themes, the whole tab sequence walked forwards and back with a painted focus
+ring on every stop, no motion under `prefers-reduced-motion`, no sideways
+overflow at four widths, and every clipping region reachable by keyboard.
+
+**Does anything leave this origin?** `headers.e2e.ts` watches the network and
+the console while every declared state is entered, every registered lifecycle
+event is fired, and the page is then left. The console half matters as much as
+the network half: a request the security policy refuses never becomes a request,
+so it is only ever visible as a console error.
+
+### What would reach a visitor unnoticed
+
+Every item below was produced by changing this repository, running the whole
+chain, and watching it stay green. None is hypothetical.
+
+**A state that is a viewport rather than a pseudo-class.** The state driver
+forces every pseudo-class the shipped stylesheets declare, but the sweeps run at
+the viewports the config lists. An animation, or a contrast-failing colour,
+written inside `@media (min-width: 1440px)` is entered by nothing: the motion
+sweep does not reach that width and axe runs once per page per theme at one
+size.
+
+**A generated box that is not `::before` or `::after`.** The paint sweep walks
+the element and those two, so a hardcoded `::selection { background: … }` is a
+surface a reader sees on every drag-select and no gate looks at.
+
+**An at-rule nobody listed.** `@media print` is excluded from the contract that
+refuses an unentered condition, so a print stylesheet can hide a section or
+paint it off-token and stay green.
+
+**A listener rather than a rule.** The driver forces CSS states; it does not
+dispatch pointer events into the document. A `pointerenter` handler that warms a
+remote texture — `new Image().src = 'https://…'` — is reached by neither the
+state driver nor the network sweep.
+
+**A page other than the one a claim was written for.** Several claims still open
+`/` alone. The same `pagehide` beacon moved into a client component that only
+`app/not-found.tsx` renders is outside them.
+
+**A file type moved across the script exemption.** `isScript` is a regular
+expression over extensions, and widening it is a one-character change the
+surrounding comment invites. Adding `txt` to it moves `out/index.txt` and the
+flight-data files from "read whole" to "read for fetch syntax only", which is a
+real narrowing of the gate that looks like tidying.
+
+The shape those share is worth naming, because it is the shape the next one will
+have too: **a sweep that names its inputs is one step behind the next accident.**
+Every gate here that survives contact enumerates — pages from `app/`, states
+from the shipped stylesheets, files from the export itself — and every one that
+has been walked past was holding a list.
+
+### The two gates that are red on purpose
+
+Both state what this site should do rather than what it does, so each turns
+green the day its cause is fixed and demands its annotation come off. Neither is
+a flake, and neither may be relaxed to match the code.
+
+| Gate                                                                           | What it is waiting for                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `headers.e2e.ts`, "refuses to be put inside a page belonging to somebody else" | A response header. `frame-ancestors` is ignored in a `<meta http-equiv>` policy by specification, and GitHub Pages sends no configurable headers, so the page can be framed by anybody today. `maecly.com` already resolves through Cloudflare, so proxying the Pages origin and adding a transform rule would restore this and `nosniff` both |
+| `exported-site.e2e.ts`, on the preview card's address                          | One character. Next normalises a metadata URL by dropping the trailing slash, so every document advertises `https://workly-reel.maecly.com` to a link preview while the canonical a few tags later claims `https://workly-reel.maecly.com/`. The site has decided which is its address and then publishes the other as its permanent identity  |
+
+While one of these is red it gates nothing of its own: the next defect of the
+same shape would land in a test that already fails and the run would look
+unchanged. `headers.e2e.ts` pins every other directive of the policy beside the
+red one, and `scripts/check-export-privacy.ts` holds the weaker `og:url` claim
+that survives being a build gate — the address must at least be at this origin.
+
+### Where a gate can be absent without going red
+
+One path only. On a pull request from a fork, GitHub withholds the design-system
+deploy key by design, nothing installs, and every step of the Verify job skips —
+so that job reports success having verified nothing. It says so in the run log
+and a maintainer has to run the chain before merging. The protection that does
+not depend on that branch is the copy of the privacy gate inside `pnpm build`,
+which means no `out/` can exist anywhere without having passed it. A fork's run
+is short the gate, not the protection.
+
+The deploy workflow has no such branch: `pages.yml` runs only from `main`, where
+the key must exist, and none of its steps carries an `if:`.
+
+### What a seventh phase would do here
+
+In the order the value falls out of it.
+
+1. **Make the viewport a state.** Run the motion, theme and accessibility sweeps
+   at every breakpoint the shipped stylesheets declare a `@media (min-width: …)`
+   for, discovered the way the pseudo-classes already are. That single change
+   closes two of the misses above, and it is the only one of them that can hide
+   a contrast failure from axe.
+2. **Sweep every generated box, not two.** `::selection`, `::marker`,
+   `::placeholder` and `::backdrop` all paint, and none is looked at.
+3. **Drive events as well as states.** Dispatch a real `pointerenter`,
+   `pointerdown` and `keydown` on every element that has a listener, so a fetch
+   warmed from script is caught the way a fetch declared in CSS now is.
+4. **Give every page-level claim the page inventory.** `pages.ts` exists and
+   several specs still open `/`; the network and lifecycle claims in
+   `headers.e2e.ts` are the ones that matter most.
+5. **Replace the script exemption with a measurement.** Reading a chunk for
+   fetch syntax alone is a genuine trade, but it is currently expressed as an
+   extension list that a one-character edit can widen. An allowlist of the
+   specific documentation origins the framework quotes would let every script be
+   read whole and would fail on the day a new address appears.
+6. **Restore the two lost headers.** That is a Cloudflare transform rule rather
+   than a code change, and it retires one of the two red gates.
 
 ## Deployment
 
