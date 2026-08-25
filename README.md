@@ -345,99 +345,105 @@ Every route prerenders as static content: `/`, `/_not-found`, `/icon.png`,
 `/icon1.png`, `/robots.txt`, and `/sitemap.xml`. Client JavaScript is limited to
 the theme provider, the theme toggle, and the two scroll actions.
 
-`next.config.ts` sends `X-Robots-Tag: noindex, nofollow`,
-`X-Content-Type-Options: nosniff`, a `strict-origin-when-cross-origin` referrer
-policy, and a Content Security Policy with `form-action 'none'` and
-`frame-ancestors 'none'`. Confirm them on a real response before deploying:
+The site is exported as static files, so what a reader receives is exactly what
+is in `out/`. Serve it the way the host does and look:
 
 ```bash
-curl -sI http://localhost:3000/ | grep -i 'x-robots-tag\|content-security-policy'
+pnpm build
+pnpm start          # http://127.0.0.1:4311, using Pages' own resolution rules
 ```
+
+### What the static host cannot send
+
+`next.config.ts` used to set five response headers. GitHub Pages serves files
+and offers no header configuration, so they are gone, and Next ignores a
+`headers()` block under `output: 'export'` silently — which is why the block was
+removed rather than left to read as protection that is not there.
+
+| Promise                           | Now                                                         |
+| --------------------------------- | ----------------------------------------------------------- |
+| `noindex, nofollow`               | Unchanged. Always sent twice; the meta tag is what remains  |
+| Content-Security-Policy           | `<meta http-equiv>`, hoisted to the front of every document |
+| `Referrer-Policy`                 | `<meta name="referrer">`                                    |
+| `frame-ancestors 'none'`          | **Lost.** Ignored in a meta tag by specification            |
+| `X-Content-Type-Options: nosniff` | **Lost.** No meta equivalent exists                         |
+
+The page can therefore be framed by anybody. `tests/e2e/headers.e2e.ts` carries a
+test that says so, marked expected-to-fail, so restoring the header turns it
+green and demands the annotation come off.
+
+`maecly.com` already resolves through Cloudflare, so proxying the Pages origin
+and adding a transform rule would restore both as real headers. That is a
+setting, not a migration.
+
+### Why the policy is hoisted
+
+A policy delivered by meta tag governs only what the parser meets after it. Next
+decides the order of its own `<head>` and puts preloads, stylesheets and its
+bootstrap scripts first: on a real build the tag landed at position 15 with seven
+`<script>` tags already ahead of it. `scripts/harden-export.ts` runs as part of
+`pnpm build` and moves it to the front of every exported document; a test fails
+if it ever stops working.
 
 ## Deployment
 
-**Not yet deployed.** Phase 0 has not been linked to a Vercel project, so nothing
-below describes a configuration that currently exists. It is the documented
-procedure, to be followed once and then recorded here with the real project id.
+Published by GitHub Pages at **https://workly-reel.maecly.com**, from `main`,
+by `.github/workflows/pages.yml`.
 
-### Linking the Vercel project
+The repository is public because Pages on a private repository requires a paid
+plan and the `MAECLY` organisation is on the free one. Only this repository is
+public; the design system and the desktop application remain private.
 
-```bash
-pnpm dlx vercel@latest login
-pnpm dlx vercel@latest link          # MAECLY scope, project `workly-reel-landing`
-pnpm dlx vercel@latest pull          # writes .vercel/, which is gitignored
-```
+### What is already configured
 
-Settings to confirm in the project, once:
+| Thing         | Value                                                   |
+| ------------- | ------------------------------------------------------- |
+| DNS           | `CNAME workly-reel -> maecly.github.io`, proxy disabled |
+| Custom domain | `public/CNAME`, copied into `out/` by the export        |
+| Build         | `pnpm build`, then `pnpm smoke` against `out/`          |
+| Source        | GitHub Actions, not a branch                            |
 
-Most of this is already committed in `vercel.json`, so the dashboard should
-need no manual configuration:
+The Cloudflare record is deliberately **DNS only**. GitHub has to reach the host
+directly to issue its certificate; behind the orange cloud it cannot, and the
+site is unreachable over HTTPS. Once `Enforce HTTPS` is available in the Pages
+settings the record can be proxied if the headers above are wanted back.
 
-| Setting           | Value                            | Where it is set |
-| ----------------- | -------------------------------- | --------------- |
-| Framework preset  | Next.js                          | `vercel.json`   |
-| Install command   | `bash scripts/vercel-install.sh` | `vercel.json`   |
-| Build command     | `pnpm run build`                 | `vercel.json`   |
-| Output directory  | `.next`                          | `vercel.json`   |
-| Node version      | 22.x or newer                    | dashboard       |
-| Production branch | `main`                           | dashboard       |
+One repository secret is required:
 
-One environment variable is required, for both Production and Preview:
-
-| Variable                    | What it is                                                            |
+| Secret                      | What it is                                                            |
 | --------------------------- | --------------------------------------------------------------------- |
 | `WORKLY_REEL_UI_DEPLOY_KEY` | The private half of a read-only deploy key on `MAECLY/workly-reel-ui` |
 
-The page itself reads nothing at runtime. That variable exists only so the
-build can fetch the private design system.
-
-### Why the install command is a script
-
-The design system is a private repository consumed as a pinned git dependency. A
-local machine resolves it through the developer's own SSH agent. A Vercel build
-has neither an agent nor a key, so a plain `pnpm install` fails at the git fetch
-with a permission error that reads like a missing package.
-
-`scripts/vercel-install.sh` writes the deploy key from the build environment,
-restricts SSH to it, and then installs normally. With no key set it falls back to
-the ambient SSH configuration, so the same script is what runs locally.
+The page reads nothing at runtime. That secret exists only so the build can
+fetch the private design system. Unlike the verify workflow, the deploy has no
+useful degraded mode — a site built without the design system publishes
+unstyled — so it fails loudly rather than skipping.
 
 Generate the pair once:
 
 ```bash
-ssh-keygen -t ed25519 -C "vercel@workly-reel-landing" -f ./deploy-key -N ""
+ssh-keygen -t ed25519 -C "pages@workly-reel-landing" -f ./deploy-key -N ""
 ```
 
 Add `deploy-key.pub` to `MAECLY/workly-reel-ui` under Settings, Deploy keys,
-**without** write access. Paste the contents of `deploy-key` into the Vercel
-variable. Then delete both local files.
+**without** write access. Paste the contents of `deploy-key` into the repository
+secret. Then delete both local files.
 
-Deploy a preview first, then promote:
-
-```bash
-pnpm dlx vercel@latest deploy                 # preview URL
-pnpm dlx vercel@latest deploy --prod          # production
-```
-
-### Verifying the custom domain
-
-1. Add `workly-reel.maecly.com` to the project's domains.
-2. Create the `CNAME` record Vercel prints, at the DNS provider for
-   `maecly.com`. Do not guess the target; copy it from the dashboard.
-3. Wait for the certificate to be issued, then check both the address and the
-   posture:
+### Verifying a deploy
 
 ```bash
 dig +short workly-reel.maecly.com
-curl -sI https://workly-reel.maecly.com/ | grep -i 'x-robots-tag\|location'
 curl -s  https://workly-reel.maecly.com/ | grep -o '<link rel="canonical"[^>]*>'
+curl -s  https://workly-reel.maecly.com/ | grep -o 'http-equiv="Content-Security-Policy"'
 curl -s  https://workly-reel.maecly.com/robots.txt
+curl -so /dev/null -w '%{http_code}\n' https://workly-reel.maecly.com/nothing-here
 ```
 
 The canonical must read `https://workly-reel.maecly.com/`, with the trailing
-slash, and appear exactly once. `robots.txt` must disallow everything. The
-deployment URL must redirect to the custom domain rather than serving a second
-copy of the page at a second address.
+slash, and appear exactly once. `robots.txt` must disallow everything. The last
+command must answer `404`: GitHub Pages serves `out/404.html` for an address
+that was never published, and an answer of `200` means the export is missing
+that file and the host is showing its own error page instead of this one.
 
 ### Rolling back
 
