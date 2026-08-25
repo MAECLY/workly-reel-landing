@@ -60,12 +60,29 @@ jobs:
       - name: Smoke
         run: pnpm smoke
 
-      # A missing CNAME silently drops the custom domain and the site reappears
-      # at the maecly.github.io address, which is not where anything points.
-      - name: Confirm the custom domain survived the export
+      # The custom domain lives in the repository's Pages settings, not in the
+      # artefact. This step used to assert `out/CNAME` existed and described that
+      # file as what keeps the domain; measured against a real deploy, that is
+      # false. The artefact carried the file, the log said "Publishing to
+      # workly-reel.maecly.com", and the configured domain stayed empty until it
+      # was set through the API. A branch-published site reads that file; an
+      # Actions-published one ignores it.
+      #
+      # So the check now reads the setting that actually governs. If the domain
+      # is cleared or changed, the site silently moves to the github.io address
+      # where every root-absolute asset path 404s - the page still renders, with
+      # no styling, which is a failure that looks like a design regression.
+      - name: Confirm the published domain is the intended one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: workly-reel.maecly.com
         run: |
-          test -f out/CNAME || { echo "::error::out/CNAME is missing; the custom domain would be dropped."; exit 1; }
-          echo "Publishing to $(cat out/CNAME)"
+          configured="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.cname // ""' 2>/dev/null || echo "")"
+          if [ "$configured" != "$EXPECTED" ]; then
+            echo "::error::Pages is configured for '${configured:-<none>}' but this site is built for ${EXPECTED}. Every asset path is absolute from the root, so publishing under any other address serves an unstyled page."
+            exit 1
+          fi
+          echo "Publishing to $configured"
 
       - uses: actions/configure-pages@v5
 
