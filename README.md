@@ -204,6 +204,7 @@ pnpm test
 | `tests/theme.test.tsx`        | Dark by default, the same markup under light, the toggle's accessible name, and no hardcoded colour in `app/landing.css`                                                                                                                                                                                                                     |
 | `tests/check-content.test.ts` | The linter passes the page as it stands, and each rule still rejects its own violation and accepts the honest phrasing                                                                                                                                                                                                                       |
 | `tests/not-found.test.tsx`    | The 404 route uses the same visual system, refuses indexing, and offers one way back to a route that exists                                                                                                                                                                                                                                  |
+| `tests/landing-css.test.ts`   | Every declaration in `app/landing.css`, one at a time: no colour written out in any notation, and every colour-bearing property taking its value from a custom property                                                                                                                                                                      |
 
 **`pnpm lint` is partial, and that is a dependency problem rather than a
 choice.** `eslint@10.9.1` is pinned while `eslint-config-next@16.3.2` brings
@@ -243,10 +244,13 @@ disk was already wrong.
 | `tests/e2e/responsive.e2e.ts` | At 390, 768, 1280, and 1680: no horizontal scroll, no element past the viewport, the headline in four lines or fewer, and every interactive target at least 24 by 24                                                                                                                                                                                                                                                                                                                                                                                         |
 | `tests/e2e/a11y.e2e.ts`       | axe-core reporting nothing serious or critical in either theme, one `h1`, no skipped heading level, a skip link that moves the tab sequence into `<main>`, and a non-empty `alt` on every image                                                                                                                                                                                                                                                                                                                                                              |
 | `tests/e2e/keyboard.e2e.ts`   | A declared inventory of every control the page owes a keyboard, each one present and rendered, then the whole tab sequence walked forwards and back against that inventory, with the design system's focus ring painted on every stop and both sideways-scrolling registers reachable                                                                                                                                                                                                                                                                        |
-| `tests/e2e/motion.e2e.ts`     | Both sides of `prefers-reduced-motion`: every element and both of its generated boxes swept for a declared or running animation under `reduce`, and an instant jump to the run block, against a page that genuinely rises, reveals, and glides under `no-preference`                                                                                                                                                                                                                                                                                         |
+| `tests/e2e/motion.e2e.ts`     | Both sides of `prefers-reduced-motion`: every element and both of its generated boxes swept for a declared or running animation under `reduce`, on every page the router renders, and an instant jump to the run block, against a page that genuinely rises, reveals, and glides under `no-preference`                                                                                                                                                                                                                                                       |
 | `tests/e2e/no-script.e2e.ts`  | The page with scripting off: the copy, the sections, and the theme arrive in the first response, the in-page actions are followed by the browser alone, and nothing stays hidden waiting for an observer                                                                                                                                                                                                                                                                                                                                                     |
-| `tests/e2e/theme.e2e.ts`      | Every colour the page paints, swept from the document rather than from a list of surfaces: each one repaints on the toggle unless the token document says the themes share it, and each one comes back on the way home                                                                                                                                                                                                                                                                                                                                       |
+| `tests/e2e/theme.e2e.ts`      | Every colour the page paints, swept from the document rather than from a list of surfaces, on every page the router renders: background colours and background images both, each repainting on the toggle unless a shared token is what feeds it, and each coming back on the way home                                                                                                                                                                                                                                                                       |
 | `tests/e2e/contracts.e2e.ts`  | The seams between the documents this page publishes: the headers `next.config.ts` promises reaching every surface including the image optimiser and an unpublished address, a policy naming no origin but this one and no request breaking it, the sitemap advertising only addresses that answer and claim that canonical, the robots file pointing at a sitemap that is really served, a 404 that is a 404, the post copy quoted exactly as the export wrote it, and the design system commit the footer publishes matching the one the lockfile installed |
+| `tests/e2e/not-found.e2e.ts`  | The route that answers when something is wrong: a real 404 rather than an apology served as a page, already in its theme, publishing everything about itself the landing page does, one way out that reaches a page that answers, three controls a keyboard reaches in order with a focus ring on each, a file the site does not have refused rather than served as HTML, and a fragment naming nothing - stale, mangled, or shaped like markup - leaving the page working                                                                                   |
+| `tests/e2e/headers.e2e.ts`    | The permissions, pinned rather than derived: every directive of the policy written out and compared with the served one on every page, the guards beside it and the absent `X-Powered-By`, a `noindex` in the markup of every page, the refusal to be framed asked of the browser rather than of the header, the image optimiser refusing a foreign origin, and no request leaving this origin                                                                                                                                                               |
+| `tests/e2e/overflow.e2e.ts`   | Every region on every page that clips content wider than itself, at a phone width: user-scrollable rather than merely hidden, able to travel the whole distance it is hiding, and reachable by a keyboard                                                                                                                                                                                                                                                                                                                                                    |
 
 Every expectation is read from `content/` and `public/assets/manifest.json`, so
 renaming a section or replacing an asset fails the suite rather than leaving it
@@ -273,14 +277,48 @@ somewhere the page cannot edit: a written inventory drawn from `content/`, a
 sweep of every element on the page, and a sweep of every colour it paints. Each
 was re-planted afterwards and each is now caught.
 
+Six more were planted later, and each of those was a gate looking at the wrong
+thing rather than at the wrong place. `overflow-x: auto` on the specification
+table became `hidden`, the usual answer to an unwanted scrollbar, and cut a
+hundred pixels of the table off at 390 while every gate stayed green:
+`keyboard.e2e.ts` asked which regions _declare_ that they scroll, and nothing
+asked whether content that does not fit can still be reached, which
+`overflow.e2e.ts` now does by trying to scroll every region that clips. The
+panel's background became a gradient of two literals, which `theme.e2e.ts`
+could not see because a gradient is a background _image_ and the sweep read
+background _colour_; its border was hardcoded to the literal one shared token
+happens to hold, and the sweep excused it for that resemblance. The sweep now
+reads both halves of a background, and asks which surfaces a token actually
+feeds by overriding the tokens and watching what moves, so a colour is excused
+for where it comes from rather than for what it looks like.
+`frame-ancestors 'none'` was deleted from the policy and the header check, which
+reads `next.config.ts`, lost the expectation with the promise; `headers.e2e.ts`
+now writes every directive out and asks the browser to try framing the page. An
+animation was added to `.lp-notfound__code` outside the reduced-motion guard,
+on a class only the 404 uses, and the motion sweep was opening `/` and nothing
+else; `pages.ts` now walks `app/` and both sweeps visit every page the router
+renders. And the skip link's `transform` was swapped for a `clip-path`, leaving
+the `:focus-visible` rule undoing a transform that no longer hid anything: the
+box stayed exactly where it was, in the viewport, focused, and invisible.
+`a11y.e2e.ts` now hit-tests the link and compares what is painted where it sits
+before and after it takes focus, which no hiding technique survives.
+
 What still passes, so a green run is not read as covering it: a section heading
 demoted from `h2` to `h4` where the heading before it is an `h3`, which
 `a11y.e2e.ts` and axe both consider legal enough not to block on. And the header
-check in `contracts.e2e.ts` reads its expectation from `next.config.ts`, so
-deleting a promise there deletes the expectation with it; what anchors that from
-the other side is `metadata.e2e.ts`, which pins `noindex, nofollow` literally,
-and the policy check, which refuses any origin but this one however the config
-is written.
+check in `contracts.e2e.ts` still reads its expectation from `next.config.ts`,
+so deleting a promise there deletes the expectation with it; what anchors that
+from the other side is `metadata.e2e.ts`, which pins `noindex, nofollow`
+literally, `headers.e2e.ts`, which pins every directive of the policy and tries
+to frame the page, and the policy check, which refuses any origin but this one
+however the config is written.
+
+One more, and it is the one this work made easiest to assume away: axe still
+runs on the landing page and nowhere else. `pages.ts` walks `app/` and feeds
+every page it finds to the theme sweep and the reduced-motion sweep, but
+`a11y.e2e.ts` opens `/` and only `/`, so the not-found page is never analysed.
+`not-found.e2e.ts` holds that page's markup, metadata, theme, way out and three
+keyboard stops, and runs no axe at all.
 
 ### Smoke
 
