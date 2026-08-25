@@ -1128,6 +1128,10 @@ table {
   color: var(--wr-color-text-primary);
   overflow-x: auto;
   white-space: pre;
+  /* A command longer than the panel scrolls rather than wrapping, which makes
+     this a region a reader has to be able to grab as well as read. One line of
+     monospace is a couple of pixels short of the smallest comfortable target. */
+  min-height: var(--wr-space-6);
 }
 
 .lp-sequence__command::selection,
