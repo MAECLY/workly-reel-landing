@@ -1,4 +1,4 @@
-import manifest from '../public/assets/manifest.json';
+import manifest from '../public/assets/manifest.json' with { type: 'json' };
 import type { RealAsset } from './types';
 
 /**
@@ -8,6 +8,12 @@ import type { RealAsset } from './types';
  * here rather than hardcoding paths means a component cannot reference a file
  * the manifest does not describe, and `alt` is never rewritten in a component.
  * `docs/adr-0001-real-assets.md` records why this is a hard rule.
+ *
+ * The `with { type: 'json' }` attribute is not decoration. This package is
+ * `"type": "module"`, so Playwright loads these files through Node's own ESM
+ * resolver, and Node refuses a JSON module without it. Without the attribute
+ * the end-to-end specs cannot import `content/` at all and would have to
+ * restate the copy they exist to check.
  */
 
 const ASSET_KINDS = ['screenshot', 'export'] as const;

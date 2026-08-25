@@ -48,7 +48,13 @@ export function RunInstructions() {
                     {step.comment === '' ? null : (
                       <p className="lp-sequence__comment">{step.comment}</p>
                     )}
-                    <pre className="lp-sequence__command">
+                    {/*
+                      Focusable for the same reason the specification table is:
+                      a command longer than the panel scrolls sideways instead
+                      of wrapping, and a keyboard has to be able to read the
+                      rest of it.
+                    */}
+                    <pre className="lp-sequence__command" tabIndex={0}>
                       <code>{step.command}</code>
                     </pre>
                   </li>

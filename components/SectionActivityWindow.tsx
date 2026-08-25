@@ -33,7 +33,13 @@ export function SectionActivityWindow() {
                   {activityWindow.bounds.min} to {activityWindow.bounds.max} inclusive dates
                 </p>
               </div>
-              <div className="lp-panel__scroll">
+              {/*
+                Focusable because it scrolls. The table keeps its columns and
+                overflows its panel on a narrow viewport rather than reflowing,
+                and a region that can only be moved with a pointer or a
+                trackpad is unreachable from a keyboard.
+              */}
+              <div className="lp-panel__scroll" tabIndex={0}>
                 <table className="lp-table">
                   <caption className="lp-panel__caption">
                     Example ranges resolved from 2026-08-24, the date the screenshots above were

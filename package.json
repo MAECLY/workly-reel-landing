@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "content:check": "tsx scripts/check-content.ts",
-    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run content:check && pnpm run test && pnpm run build"
+    "smoke": "tsx scripts/smoke.ts",
+    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run content:check && pnpm run test && pnpm run build && pnpm run smoke && pnpm run test:e2e"
   },
   "dependencies": {
     "@maecly/workly-reel-ui": "git+ssh://git@github.com/MAECLY/workly-reel-ui.git#837a08bdb4c1a84f4002cd3f38a9e28069965ab2",
@@ -24,6 +25,7 @@
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^7.0.1",
