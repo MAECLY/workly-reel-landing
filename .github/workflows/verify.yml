@@ -106,13 +106,23 @@ jobs:
         if: steps.access.outputs.available == 'true' && steps.browser.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
-      # One class this gate does not catch, named so a green run is not read as
-      # covering it: a section heading demoted from h2 to h4 where the heading
-      # immediately before it in document order is an h3. The heading check in
-      # tests/e2e/a11y.e2e.ts compares each heading against its predecessor, so
-      # that descent is legal to it, and axe reaches the same verdict at
-      # moderate impact, below the serious threshold this gate blocks on. A
-      # demotion that follows the h1 directly is caught.
+      # Two classes this gate does not catch, named so a green run is not read
+      # as covering them:
+      #
+      #   - A section heading demoted from h2 to h4 where the heading
+      #     immediately before it in document order is an h3. The heading check
+      #     in tests/e2e/a11y.e2e.ts compares each heading against its
+      #     predecessor, so that descent is legal to it, and axe reaches the
+      #     same verdict at moderate impact, below the serious threshold this
+      #     gate blocks on. A demotion that follows the h1 directly is caught.
+      #   - An animation declared on any class other than `.lp-rise` or
+      #     `.lp-reveal`. That pair is the whole of what tests/e2e/motion.e2e.ts
+      #     samples, so what the reduced-motion half proves is that those two
+      #     hold still, not that the page does. A new animation written outside
+      #     the `prefers-reduced-motion: no-preference` block ships with this
+      #     gate green, which is the accident the spec exists to prevent.
+      #     Confirmed by adding one to `.lp-status` and watching all 90 tests
+      #     pass.
       - name: End to end
         if: steps.access.outputs.available == 'true'
         run: pnpm run test:e2e
