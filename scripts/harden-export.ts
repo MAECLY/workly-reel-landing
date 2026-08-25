@@ -12,9 +12,14 @@
  * document is rewritten once, after export. This runs as part of `pnpm build`,
  * so what is tested and what is published are the same bytes.
  *
- * `tests/exported-html.test.ts` fails if the policy is ever not first, which is
- * what stops this script from silently doing nothing after a Next upgrade
- * changes the markup it matches.
+ * The `policy-first` rule in `scripts/check-export-privacy.ts` fails if the
+ * policy is ever not first in an exported document, which is what stops this
+ * script from silently doing nothing after a Next upgrade changes the markup it
+ * matches. It runs immediately after this one in `pnpm build`, over the same
+ * files, and `tests/check-export-privacy.test.ts` holds it to a fixture where
+ * the policy has been demoted so that the rule cannot quietly stop matching
+ * either. This comment previously named `tests/exported-html.test.ts`, which
+ * has never existed in this repository.
  */
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
