@@ -61,7 +61,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm build && pnpm start -p ${PORT}`,
+    // Builds, then serves `out/` under Pages' own resolution rules. `next start`
+    // is not an option: it refuses to run under `output: 'export'`, and it would
+    // answer with headers and a 404 body the published host does not produce.
+    command: `pnpm build && pnpm exec tsx scripts/serve-export.ts ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,

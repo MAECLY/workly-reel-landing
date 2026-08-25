@@ -37,11 +37,21 @@ const POLL_INTERVAL_MS = 250;
 /** The register and the three files it approves. Nothing else may be rendered. */
 const CRITICAL_ASSETS = ['/assets/manifest.json', ...realAssets.map((asset) => asset.file)];
 
-/** Present, and produced by a build rather than left over from a dev server. */
+/**
+ * Present, and produced by a build rather than left over from a dev server.
+ *
+ * These are the exported files themselves rather than anything under `.next`.
+ * `out/` is what gets published, so checking `.next` would report on an
+ * intermediate nobody serves. `404.html` is listed because GitHub Pages serves
+ * it for every unresolved path, and an export missing it answers with the
+ * host's own error page instead of this site's.
+ */
 const BUILD_ARTEFACTS = [
-  join('.next', 'BUILD_ID'),
-  join('.next', 'routes-manifest.json'),
-  join('.next', 'server', 'app', 'index.html'),
+  join('out', 'index.html'),
+  join('out', '404.html'),
+  join('out', 'sitemap.xml'),
+  join('out', 'robots.txt'),
+  join('out', 'CNAME'),
 ];
 
 interface Check {
@@ -142,7 +152,7 @@ const waitForServer = async (server: ChildProcess): Promise<Response> => {
 
   while (Date.now() < deadline) {
     if (server.exitCode !== null) {
-      throw new Error(`next start exited with code ${server.exitCode}`);
+      throw new Error(`the static server exited with code ${server.exitCode}`);
     }
     try {
       return await fetch(`${ORIGIN}/`);
@@ -156,10 +166,15 @@ const waitForServer = async (server: ChildProcess): Promise<Response> => {
 };
 
 const checkTheServedPage = async (): Promise<void> => {
-  const server = spawn(join(ROOT, 'node_modules', '.bin', 'next'), ['start', '-p', String(PORT)], {
-    cwd: ROOT,
-    stdio: 'ignore',
-  });
+  // The published site is static files on GitHub Pages, so this serves `out/`
+  // under that host's resolution rules. `next start` refuses to run under
+  // `output: 'export'`, and answering from it would report on a server that is
+  // not the one anybody visits.
+  const server = spawn(
+    join(ROOT, 'node_modules', '.bin', 'tsx'),
+    [join('scripts', 'serve-export.ts'), String(PORT)],
+    { cwd: ROOT, stdio: 'ignore' },
+  );
 
   try {
     const response = await waitForServer(server);
