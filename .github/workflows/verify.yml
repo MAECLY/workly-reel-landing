@@ -106,23 +106,38 @@ jobs:
         if: steps.access.outputs.available == 'true' && steps.browser.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
-      # Two classes this gate does not catch, named so a green run is not read
-      # as covering them:
+      # One class this gate does not catch, named so a green run is not read as
+      # covering it: a section heading demoted from h2 to h4 where the heading
+      # immediately before it in document order is an h3. The heading check in
+      # tests/e2e/a11y.e2e.ts compares each heading against its predecessor, so
+      # that descent is legal to it, and axe reaches the same verdict at
+      # moderate impact, below the serious threshold this gate blocks on. A
+      # demotion that follows the h1 directly is caught.
       #
-      #   - A section heading demoted from h2 to h4 where the heading
-      #     immediately before it in document order is an h3. The heading check
-      #     in tests/e2e/a11y.e2e.ts compares each heading against its
-      #     predecessor, so that descent is legal to it, and axe reaches the
-      #     same verdict at moderate impact, below the serious threshold this
-      #     gate blocks on. A demotion that follows the h1 directly is caught.
-      #   - An animation declared on any class other than `.lp-rise` or
-      #     `.lp-reveal`. That pair is the whole of what tests/e2e/motion.e2e.ts
-      #     samples, so what the reduced-motion half proves is that those two
-      #     hold still, not that the page does. A new animation written outside
-      #     the `prefers-reduced-motion: no-preference` block ships with this
-      #     gate green, which is the accident the spec exists to prevent.
-      #     Confirmed by adding one to `.lp-status` and watching all 90 tests
-      #     pass.
+      # An animation declared outside the `prefers-reduced-motion:
+      # no-preference` block used to be a second entry here, because
+      # tests/e2e/motion.e2e.ts sampled `.lp-rise` and `.lp-reveal` and nothing
+      # else. It now sweeps every element and both of its generated boxes, and
+      # the `.lp-status` animation that once passed is caught.
+      #
+      # This step also owns the one set of claims that are not about rendering
+      # at all. tests/e2e/contracts.e2e.ts holds the documents this page
+      # publishes against each other: the headers next.config.ts promises
+      # reaching every surface the site serves, including the image optimiser
+      # and an address Phase 0 never published, the sitemap advertising only
+      # addresses that answer and agree about their own canonical, the robots
+      # file pointing at a sitemap that is really served, the post copy quoted
+      # as the export wrote it, and the design-system commit in the footer
+      # matching the one the lockfile installed. They run here rather than in
+      # Vitest because every one of them is only true of `next start`.
+      #
+      # The limit that gate carries, named for the same reason as the heading
+      # one above: the header check reads its expectation from next.config.ts,
+      # so deleting a promise there deletes the expectation with it. Two things
+      # hold it from the other side: tests/e2e/metadata.e2e.ts pins
+      # `noindex, nofollow` literally, and the policy check beside it in
+      # contracts.e2e.ts refuses any source that is not 'self', 'none',
+      # 'unsafe-inline' or data: however the config comes to be written.
       - name: End to end
         if: steps.access.outputs.available == 'true'
         run: pnpm run test:e2e
