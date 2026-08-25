@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
@@ -344,6 +344,14 @@ describe('an image that would identify who captured it', () => {
     expect(rules()).toContain('image-metadata');
   });
 
+  it('is refused for a leak in a file that is named like an image and is not one', () => {
+    // The bytes decide how a file is read, not the name on it. Keyed on the
+    // extension, this branch looked for image metadata, found none because
+    // there is none to find, and published the file unread.
+    put('assets/notes.png', 'const root="/Users/quillstone/Sites/a-project";');
+    expect(rules()).toContain('absolute-path');
+  });
+
   it('is refused when a comment carries a path rather than a name', () => {
     // The keyword is innocuous, so only reading the value catches this. It is
     // how a capture tool records the window it captured.
@@ -441,6 +449,144 @@ describe('the contracts the export publishes about itself', () => {
     );
     expect(rules()).toContain('external-reference');
   });
+});
+
+/**
+ * The rule that used to be asked of `.html` and of nothing else.
+ *
+ * A stylesheet was the whole hole: it is the classic place a webfont arrives
+ * from a CDN, it ships in the export beside the documents, and until this
+ * describe block existed no rule in this gate read one. The `:hover` case is
+ * the same hole twice over, because it is also a state no browser in the
+ * end-to-end suite entered, so nothing anywhere would have seen it.
+ *
+ * Each fixture below is a file type the gate was never given: a stylesheet, a
+ * font declaration, an SVG, a manifest with an extension nobody has used here
+ * yet. None of them is named in the source; they are found because the sweep
+ * walks the export and reads what it finds.
+ */
+describe('an export that would fetch from somewhere else', () => {
+  it('is refused for a webfont pulled in with @import from a stylesheet', () => {
+    put(
+      '_next/static/chunks/one.css',
+      '@import url("https://fonts.example.invalid/families.css");\n.a{color:red}\n',
+    );
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is refused for a remote background image', () => {
+    put(
+      '_next/static/chunks/one.css',
+      '.a{background-image:url(https://cdn.example.invalid/t.png)}',
+    );
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is refused for a remote texture that only a pointer would ever fetch', () => {
+    // The state half of the same hole. Nothing has to hover for this to be
+    // found, which is the point of asking it of the bytes.
+    put(
+      '_next/static/chunks/one.css',
+      '.a:hover{background:url(https://cdn.example.invalid/t.png)}',
+    );
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is refused for a font served from another origin', () => {
+    put(
+      '_next/static/chunks/one.css',
+      '@font-face{font-family:A;src:url(https://fonts.example.invalid/a.woff2) format("woff2")}',
+    );
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is refused for a host named with no scheme of its own', () => {
+    // `//host/path` inherits the scheme of the page, so it carries no `https:`
+    // for a rule that matches on the scheme to find.
+    put('_next/static/chunks/one.css', '@import url(//fonts.example.invalid/families.css);');
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is refused for a remote image inside an SVG', () => {
+    put(
+      'assets/mark.svg',
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://pixels.example.invalid/a.png"/></svg>',
+    );
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is refused for a remote address in a file type this gate has never met', () => {
+    // The rule this fixture defends is the default: a file nobody classified is
+    // read whole. Change that default and this is what goes red.
+    put('site.webmanifest', '{"icons":[{"src":"https://icons.example.invalid/a.png"}]}');
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is refused when a chunk carries a stylesheet that fetches from another origin', () => {
+    // A script is read for the fetch syntax alone, which is exactly enough to
+    // catch a rule it inserts at run time.
+    put(
+      '_next/static/chunks/two.js',
+      'const css=".a{background:url(https://cdn.example.invalid/t.png)}";document.head.append(css);',
+    );
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is refused for a host that merely begins with this site’s address', () => {
+    // `workly-reel.maecly.com.example.invalid` starts with the origin and
+    // belongs to whoever registered the other domain. Compared as origins
+    // rather than by prefix, which is the only comparison that says so.
+    put('_next/static/chunks/one.css', `.a{background:url(${ORIGIN}.example.invalid/t.png)}`);
+    expect(rules()).toContain('external-reference');
+  });
+
+  it('is still passed for a stylesheet that fetches only what the export ships', () => {
+    put(
+      '_next/static/chunks/one.css',
+      [
+        '@font-face{font-family:A;src:url(../media/a.woff2) format("woff2")}',
+        `.a{background:url(${ORIGIN}/assets/card.png)}`,
+        '.b{background:url("data:image/gif;base64,R0lGODlhAQABAAAAACw=")}',
+        '.c:hover{background:url(/assets/card.png)}',
+      ].join('\n'),
+    );
+    expect(rules()).toEqual([]);
+  });
+
+  it('is still passed when a program parses an address rather than fetching one', () => {
+    // `new URL("https://…")` and CSS `url(…)` are the same six characters once
+    // case is ignored. The framework ships a URL polyfill whose own self-test
+    // constructs four of these, and every one was reported as a remote
+    // stylesheet before the constructor was told apart from the function.
+    put(
+      '_next/static/chunks/two.js',
+      'const ok=new URL("https://a@b").username==="a"&&new URL("https://x",void 0).host==="x";',
+    );
+    expect(rules()).toEqual([]);
+  });
+
+  it('is still passed for the namespace a sitemap and an image both declare', () => {
+    // A namespace is a name that is spelled as an address and fetched by
+    // nothing. The clean sitemap already carries one; this states it as its own
+    // claim, because a rule that refused them would refuse two documents this
+    // repository publishes on purpose.
+    put(
+      'assets/mark.svg',
+      '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>',
+    );
+    put(
+      'assets/card.png',
+      png([
+        xmpChunk(
+          '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">' +
+            '<rdf:Description xmlns:exif="http://ns.adobe.com/exif/1.0/">' +
+            '<exif:PixelXDimension>1</exif:PixelXDimension>' +
+            '</rdf:Description></rdf:RDF>',
+        ),
+      ]),
+    );
+    expect(rules()).toEqual([]);
+  });
 
   it('refuses a card that has lost a tag a link preview needs', () => {
     put(
@@ -537,5 +683,50 @@ describe('what a failure says', () => {
       expect(finding.file).toBe(join('_next', 'static', 'chunks', 'one.js'));
       expect(finding.at).toMatch(/^line \d+$/);
     }
+  });
+});
+
+/**
+ * The one outbound request this gate structurally cannot see.
+ *
+ * Everything above reads `out/`, which is the answer to "what does the
+ * published site send". It is not the answer to "what does building the
+ * published site send". Next.js collects telemetry by default and posts it
+ * during `next build`, so on a product whose stated posture is that nothing
+ * leaves the machine, every build on every contributor's laptop, every Verify
+ * run and every deploy reported itself to a third party — and no rule in this
+ * file, no assertion in the browser suite and no reading of `out/` could ever
+ * have noticed, because the request is made by the build tool rather than by
+ * the site.
+ *
+ * It lives here rather than in a file of its own because this is the file that
+ * owns the question "does building this repository disclose anything", and the
+ * shape of the claim is deliberately not a check of the current environment:
+ * `next telemetry disable` writes to a per-user config outside the repository,
+ * which fixes one machine and no others. The scripts are what every machine
+ * runs, so the scripts are what is asserted.
+ */
+describe('building this site tells nobody that it was built', () => {
+  const scripts = (
+    JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    }
+  ).scripts;
+
+  /*
+   * Enumerated rather than listed. A script added later that invokes `next` is
+   * covered by being written, which is the only form of this rule that a new
+   * entry in package.json cannot walk past.
+   */
+  const invokesNext = Object.entries(scripts).filter(([, command]) => /\bnext\s/.test(command));
+
+  it('finds the scripts that invoke the framework', () => {
+    expect(invokesNext.length).toBeGreaterThan(0);
+  });
+
+  it.each(invokesNext)('`pnpm %s` disables framework telemetry', (name, command) => {
+    expect(command, `\`${name}\` runs next without disabling telemetry`).toMatch(
+      /NEXT_TELEMETRY_DISABLED=1\s+next\s/,
+    );
   });
 });

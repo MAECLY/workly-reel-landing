@@ -5,8 +5,8 @@
   "type": "module",
   "description": "WorklyReel by MAECLY Phase 0 landing page.",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build && tsx scripts/harden-export.ts && tsx scripts/check-export-privacy.ts",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build && tsx scripts/harden-export.ts && tsx scripts/check-export-privacy.ts",
     "start": "tsx scripts/serve-export.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

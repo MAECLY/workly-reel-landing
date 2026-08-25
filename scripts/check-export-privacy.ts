@@ -8,7 +8,7 @@
  * site say anything about the machine or the person that built it, and do the
  * documents it publishes about itself still say what Phase 0 intends.
  *
- * The four things it looks for, and why each one is here:
+ * The five things it looks for, and why each one is here:
  *
  * - A source map. Turbopack writes one per chunk during a production build and
  *   fills in `sourcesContent`, so a map is not a pointer to source, it *is* the
@@ -34,6 +34,16 @@
  *   reading it, so a `.DS_Store` or a stray `.env` left beside the screenshots
  *   is uploaded and served at its own address. Both were measured arriving in
  *   `out/` on a real build, and both were passed by every rule above.
+ * - A reference to somewhere that is not this site. Phase 0 fetches nothing it
+ *   does not ship, and the moment it does, the reader's browser tells a third
+ *   party who is reading this page and from where. This used to be asked of
+ *   `.html` and of nothing else, which left the stylesheets - the classic place
+ *   a webfont or a background texture is pulled from a CDN - entirely unread,
+ *   and a `url()` inside a `:hover` rule doubly so, because it is in the file
+ *   type the sweep skipped and in a state no browser in this repository's suite
+ *   ever entered. It is now asked of every file the export contains, which is
+ *   the only form of the question a file type nobody has thought of yet cannot
+ *   walk past.
  *
  * And the contracts, checked over the same bytes: `robots.txt`, `sitemap.xml`,
  * the `noindex` in every document, the Open Graph card, the security policy's
@@ -224,6 +234,71 @@ const ALWAYS: readonly TextRule[] = [
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
+/* ------------------------------------------------- a reference outward -- */
+
+/**
+ * The two syntaxes that tell a browser to fetch something with no code running:
+ * a stylesheet's `url()` and its `@import`.
+ *
+ * These are looked for in every file rather than in the stylesheets, because a
+ * stylesheet is not only a `.css`: it is also a `<style>` block, a `style`
+ * attribute, and a rule a chunk of JavaScript inserts at run time. The syntax
+ * is what makes the address an instruction, so the syntax is what is matched.
+ */
+const FETCH_INSTRUCTION = /(?:@import\s+(?:url\(\s*)?|url\(\s*)["']?([^"')\s;]+)/gi;
+
+/** An address with a scheme and an authority, which names a place and not a thing. */
+const ABSOLUTE_ADDRESS = /\b([a-z][a-z0-9+.-]*):\/\/[^\s"'<>()\\`]+/gi;
+
+/**
+ * An address that inherits the scheme of the page and names another host.
+ *
+ * Written out separately because `ABSOLUTE_ADDRESS` cannot see it: there is no
+ * scheme to match on, only the two slashes and the position they sit in.
+ */
+const PROTOCOL_RELATIVE =
+  /(?:@import\s+(?:url\(\s*)?|url\(\s*|\b(?:src|href|srcset|poster|action|formaction|ping|data)\s*=\s*)["']?\/\/[A-Za-z0-9._-]+/gi;
+
+/**
+ * Schemes a rule above already refuses, so that one leak is reported once.
+ *
+ * `file://` belongs to the absolute-path rule, which knows about the `/ROOT/`
+ * substitution Next makes and would otherwise have to be repeated here, and the
+ * bundler schemes belong to the source-map rule.
+ */
+const SCHEMES_REPORTED_ELSEWHERE = new Set(['file', 'webpack', 'turbopack', 'rsc']);
+
+/**
+ * A namespace declaration, which is a name that happens to be spelled as an
+ * address and is never fetched by anything.
+ *
+ * `sitemap.xml` opens with one, so refusing them would refuse a document this
+ * repository publishes on purpose. Matched by the attribute in front of the
+ * address rather than by the address itself, so a namespace nobody has used yet
+ * is forgiven and a script tag pointing at the same host is not.
+ */
+const NAMESPACE_DECLARATION = /xmlns(?::[A-Za-z0-9._-]+)?\s*=\s*["']?\s*$/;
+
+/**
+ * Whether a reference leaves this site.
+ *
+ * A relative path, a fragment, `data:` and `blob:` all stay here and have no
+ * authority to compare. Everything else is parsed and compared as an origin
+ * rather than by prefix: `https://workly-reel.maecly.com.example.invalid/` does
+ * begin with this site's address and belongs to somebody else entirely.
+ */
+const leavesThisSite = (target: string, origin: string): boolean => {
+  const address = target.startsWith('//') ? `https:${target}` : target;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(address)) return false;
+
+  try {
+    return new URL(address).origin !== origin;
+  } catch {
+    // Not an address a browser could resolve either, so not a reference outward.
+    return false;
+  }
+};
+
 /**
  * Files that reach the export by being in the way rather than by being wanted.
  *
@@ -287,6 +362,16 @@ const printableRuns = (bytes: Buffer): string =>
     .join('\n');
 
 const looksBinary = (bytes: Buffer): boolean => bytes.subarray(0, 8192).includes(0);
+
+/**
+ * A file whose addresses are as likely to be prose as instructions.
+ *
+ * A bundled chunk quotes documentation addresses inside the errors it throws,
+ * and a source file that reached the export would do the same. Matched on the
+ * extension, which is what the host serves the file as and therefore what the
+ * browser decides to run rather than to display.
+ */
+const isScript = (file: string): boolean => /\.[cm]?[jt]sx?$/i.test(file);
 
 const lineOf = (text: string, index: number): number => text.slice(0, index).split('\n').length;
 
@@ -601,6 +686,67 @@ export function auditExport(directory: string, expected: ExportExpectations): re
     }
   };
 
+  /**
+   * Every way this text tells a browser to go somewhere else.
+   *
+   * `read` says how much of the text can be believed, and it is the one place
+   * this gate treats file types differently, so it is worth stating why. Bytes
+   * a browser interprets are read whole: in a document, a stylesheet, an SVG or
+   * a manifest, an address is an instruction and there is no innocent way to
+   * write one. Bytes a browser *runs*, and bytes that are not text at all and
+   * only happen to read as some, are read for the fetch syntax alone: the
+   * framework's own chunks quote a dozen documentation addresses inside the
+   * error messages they throw, and a gate that called those leaks would be
+   * removed within a week. What a chunk actually fetches when it runs is a
+   * question only a browser can answer, and `tests/e2e/headers.e2e.ts` asks it
+   * there - in every state, and across the page's own unloading.
+   *
+   * Anything with an extension nobody has thought of yet is read whole, because
+   * the accident this rule exists for is a new kind of file arriving in the
+   * export with an address in it.
+   */
+  const applyReferenceRules = (
+    file: string,
+    at: string,
+    text: string,
+    read: 'whole' | 'for its fetch syntax',
+  ): void => {
+    const report = (index: number, message: string): void => {
+      const where = at === '' ? `line ${lineOf(text, index)}` : at;
+      fail(file, where, 'external-reference', message);
+    };
+
+    for (const match of text.matchAll(FETCH_INSTRUCTION)) {
+      // `new URL("https://…")` is a program parsing an address rather than a
+      // stylesheet fetching one, and CSS spells `url()` without regard to case,
+      // so the two collide. Measured: the framework ships a URL polyfill whose
+      // self-test constructs four of them, and every one was reported as a
+      // remote stylesheet before this line existed.
+      if (/\bnew\s+$/.test(text.slice(Math.max(0, match.index - 8), match.index))) continue;
+      if (leavesThisSite(match[1] ?? '', expected.origin)) {
+        report(match.index, 'a style instruction fetches from an origin that is not this site');
+      }
+    }
+
+    if (read === 'for its fetch syntax') return;
+
+    for (const match of text.matchAll(ABSOLUTE_ADDRESS)) {
+      if (SCHEMES_REPORTED_ELSEWHERE.has((match[1] ?? '').toLowerCase())) continue;
+      if (NAMESPACE_DECLARATION.test(text.slice(Math.max(0, match.index - 64), match.index))) {
+        continue;
+      }
+      if (!leavesThisSite(match[0], expected.origin)) continue;
+      report(match.index, 'a published file reaches for an origin that is not this site');
+    }
+
+    for (const match of text.matchAll(PROTOCOL_RELATIVE)) {
+      report(
+        match.index,
+        'a published file reaches for another host under whatever scheme it is served over',
+      );
+    }
+  };
+
   for (const path of files) {
     const file = relativeTo(path);
 
@@ -629,10 +775,14 @@ export function auditExport(directory: string, expected: ExportExpectations): re
 
     const bytes = readFileSync(path);
 
-    // Lower-cased, here and above, because a capture tool that names its output
-    // `Screenshot.PNG` would otherwise be read as an anonymous binary and have
-    // its metadata skipped, which is the one thing this branch exists to read.
-    if (file.toLowerCase().endsWith('.png')) {
+    // Chosen by the signature rather than by the name, which is what a browser
+    // does too. A capture tool that writes `Screenshot.PNG` is read as an image
+    // either way; the case that only the signature gets right is the other one,
+    // where a file is *named* like an image and is not one. Keyed on the
+    // extension, this branch read such a file for image metadata, found none
+    // because there is none, and moved on without ever looking at its bytes -
+    // so anything at all could be published under a name ending in `.png`.
+    if (bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
       const { text, identifying } = pngMetadata(bytes);
       for (const description of identifying) {
         fail(file, 'its metadata', 'image-metadata', `the image carries ${description}`);
@@ -640,6 +790,7 @@ export function auditExport(directory: string, expected: ExportExpectations): re
       for (const piece of text) {
         applyRules(file, piece.at, piece.text, ALWAYS);
         applyIdentityRules(file, piece.at, piece.text);
+        applyReferenceRules(file, piece.at, piece.text, 'for its fetch syntax');
       }
       continue;
     }
@@ -648,6 +799,7 @@ export function auditExport(directory: string, expected: ExportExpectations): re
       const text = printableRuns(bytes);
       applyRules(file, 'its readable strings', text, ALWAYS);
       applyIdentityRules(file, 'its readable strings', text);
+      applyReferenceRules(file, 'its readable strings', text, 'for its fetch syntax');
       continue;
     }
 
@@ -655,6 +807,7 @@ export function auditExport(directory: string, expected: ExportExpectations): re
     readable.set(file, text);
     applyRules(file, '', text, ALWAYS);
     applyIdentityRules(file, '', text);
+    applyReferenceRules(file, '', text, isScript(file) ? 'for its fetch syntax' : 'whole');
   }
 
   /* ------------------------------------------------------ the contracts -- */
@@ -699,19 +852,12 @@ export function auditExport(directory: string, expected: ExportExpectations): re
       );
     }
 
-    // Phase 0 fetches nothing it does not ship, and a document is the only
-    // surface where an absolute address is a request rather than a namespace
-    // declaration, which is why the sitemap's schema URL is not held to this.
-    for (const match of html.matchAll(/https?:\/\/[^"'\s<>]+/g)) {
-      if (!match[0].startsWith(expected.origin)) {
-        fail(
-          file,
-          `line ${lineOf(html, match.index)}`,
-          'external-reference',
-          'a document reaches for an origin that is not this site',
-        );
-      }
-    }
+    // Phase 0 fetches nothing it does not ship. That used to be asked here, of
+    // documents alone, which is how a stylesheet became the one file type in
+    // the export that could name any origin it liked. It is now asked of every
+    // file, in the per-file loop above, so this document is held to it as one
+    // published file among all the others rather than as the only one worth
+    // reading.
   }
 
   const robots = readable.get('robots.txt');
