@@ -1,5 +1,7 @@
 # workly-reel-landing
 
+[![Stars](https://img.shields.io/github/stars/MAECLY/workly-reel-landing?style=flat-square)](https://github.com/MAECLY/workly-reel-landing/stargazers) [![Views](https://hits.sh/github.com/MAECLY/workly-reel-landing.svg?label=views&style=flat-square)](https://hits.sh/github.com/MAECLY/workly-reel-landing/) [![Last commit](https://img.shields.io/github/last-commit/MAECLY/workly-reel-landing?style=flat-square)](https://github.com/MAECLY/workly-reel-landing/commits/main)
+
 The Phase 0 landing page for **WorklyReel by MAECLY**.
 
 |                      |                                                      |
